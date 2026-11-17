@@ -67,7 +67,8 @@ export function playTimerCompletionBeep(): void {
       osc.frequency.setValueAtTime(freq, now + start);
 
       gain.gain.setValueAtTime(0.001, now + start);
-      gain.gain.exponentialRampToValueAtTime(0.24, now + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.65, now + start + 0.02);
+      gain.gain.setValueAtTime(0.65, now + start + dur - 0.05);
       gain.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
 
       osc.connect(gain);
