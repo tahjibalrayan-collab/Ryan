@@ -1,0 +1,6 @@
+{
+  "name": "Personal Archive",
+  "description": "Made by Alta Hajib Nur Raiyan — A sleek dark bookshelf-styled study dashboard featuring global study methods, an AI routine generator, smart timer with spaced repetition, personal digital journals, and an ambient focus library.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

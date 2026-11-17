@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Fraunces', 'Hind Siliguri', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', 'Hind Siliguri', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --font-scribble: 'Caveat', cursive;
+    --font-handwritten: 'Patrick Hand', cursive;
+    --font-typewriter: 'Courier Prime', monospace;
+    --font-classic: 'Cormorant Garamond', Georgia, serif;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #111215;
+    color: #F4F2ED;
+  }
+
+  h1, h2, .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-mono-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.font-journal-scribble {
+  font-family: var(--font-scribble);
+}
+
+.font-journal-handwritten {
+  font-family: var(--font-handwritten);
+}
+
+.font-journal-typewriter {
+  font-family: var(--font-typewriter);
+}
+
+.font-journal-simple {
+  font-family: var(--font-sans);
+}
+
+.font-journal-classic {
+  font-family: var(--font-classic);
+}
+
+/* Realistic dark & walnut wood bookshelf ledges */
+.shelf-ledge {
+  background: linear-gradient(180deg, #3D2B1F 0%, #2A1D15 55%, #1A110C 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 224, 185, 0.14) inset,
+    0 14px 26px -6px rgba(0, 0, 0, 0.78);
+}
+
+.shelf-ledge-light {
+  background: linear-gradient(180deg, #7A5438 0%, #5B3D28 55%, #3C2719 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 236, 209, 0.28) inset,
+    0 12px 22px -6px rgba(45, 29, 17, 0.45);
+}
+
+/* Vertical spine text for library bookshelf */
+.book-spine-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+/* Open journal center spine crease */
+.journal-spine-left {
+  background: linear-gradient(90deg, rgba(0,0,0,0) 88%, rgba(0,0,0,0.08) 100%);
+}
+
+.journal-spine-right {
+  background: linear-gradient(270deg, rgba(0,0,0,0) 88%, rgba(0,0,0,0.09) 100%);
+}
+
+/* Paper ruling textures */
+.paper-lined {
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 27px,
+    rgba(60, 52, 42, 0.09) 27px,
+    rgba(60, 52, 42, 0.09) 28px
+  );
+  background-position-y: 12px;
+}
+
+.paper-dotted {
+  background-image: radial-gradient(rgba(60, 52, 42, 0.18) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.paper-grid {
+  background-image:
+    linear-gradient(to right, rgba(60, 52, 42, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(60, 52, 42, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Subtle graph-paper subtle lines for classic paper mode */
+.paper-archive-bg {
+  background-color: #DCD6CA;
+  background-image:
+    linear-gradient(to right, rgba(90, 80, 68, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(90, 80, 68, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
