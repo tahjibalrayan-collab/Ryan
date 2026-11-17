@@ -1,4 +1,5 @@
 import {
+  GeneratedRoutine,
   JournalBook,
   Language,
   LibraryBook,
@@ -452,7 +453,8 @@ export function assembleSmartRoutine(
   allocations: SubjectAllocation[],
   selectedStruggles: string[],
   customStruggle: string,
-  lang: Language
+  lang: Language,
+  startTime = '18:00'
 ): {
   title: string;
   titleBn: string;
@@ -477,9 +479,10 @@ export function assembleSmartRoutine(
 
   const matchedTips = scoredTips.slice(0, 4);
 
-  let currentMinuteCursor = 0;
+  const [startHour, startMinute] = startTime.split(':').map(Number);
+  let currentMinuteCursor = startHour * 60 + startMinute;
   const formatClock = (mins: number) => {
-    const h = String(Math.floor(mins / 60)).padStart(2, '0');
+    const h = String(Math.floor(mins / 60) % 24).padStart(2, '0');
     const m = String(mins % 60).padStart(2, '0');
     return `${h}:${m}`;
   };
@@ -584,6 +587,21 @@ export function assembleSmartRoutine(
 }
 
 const today = new Date();
+export const INITIAL_SAVED_ROUTINE: GeneratedRoutine = {
+  id: 'routine-seed-1',
+  createdAt: today.toISOString(),
+  ...assembleSmartRoutine(
+    [
+      { id: 'sub-1', subject: 'Chemistry', minutes: 60, difficulty: 'problem-solving' },
+      { id: 'sub-2', subject: 'Linear Algebra', minutes: 45, difficulty: 'conceptual' },
+      { id: 'sub-3', subject: 'Biology / Theory', minutes: 35, difficulty: 'memorization' },
+    ],
+    ['forgetting', 'procrastination'],
+    '',
+    'en'
+  ),
+};
+
 const threeDaysAgo = new Date(today);
 threeDaysAgo.setDate(today.getDate() - 3); // Day 1 was 3 days ago -> Day 4 Recall is TODAY!
 const sixDaysAgo = new Date(today);
