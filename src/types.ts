@@ -87,20 +87,16 @@ export interface StudyLog {
   dateKey: string;
 }
 
-// Strict 1-4-7 Rule:
-// stageIndex 0: Day 1 Studied -> Reminder on Day 4 (+3 days) for Recall
-// stageIndex 1: Day 4 Recalled -> Reminder on Day 7 (+3 days) to Finish
-// stageIndex 2: Day 7 Finished -> Topic Completed!
 export interface SpacedRepetitionItem {
   id: string;
   subject: string;
   topic: string;
   durationMinutes: number;
-  day1Date: string; // YYYY-MM-DD
-  day4Date: string; // YYYY-MM-DD
-  day7Date: string; // YYYY-MM-DD
-  stageIndex: 0 | 1 | 2; // 0 = Waiting Day 4 Recall, 1 = Waiting Day 7 Finish, 2 = Finished
-  nextReviewDate: string; // YYYY-MM-DD
+  day1Date: string;
+  day4Date: string;
+  day7Date: string;
+  stageIndex: 0 | 1 | 2;
+  nextReviewDate: string;
   reviewHistory: string[];
 }
 
@@ -113,13 +109,24 @@ export type JournalFontOption =
 
 export type JournalPaperStyle = 'plain' | 'lined' | 'dotted' | 'grid';
 
+export type DiaryMoodCategory =
+  | 'Happy Day'
+  | 'Good Day'
+  | 'Sad Day'
+  | 'Bad Day'
+  | 'Rainy Day'
+  | 'Best Day of My Life'
+  | 'Worst Day of My Life';
+
 export interface JournalSpread {
   id: string;
   leftDate: string;
+  leftTime?: string;
   leftContent: string;
   rightDate: string;
+  rightTime?: string;
   rightContent: string;
-  moodTag?: string;
+  moodTag?: DiaryMoodCategory | string;
 }
 
 export interface JournalBook {
@@ -142,12 +149,19 @@ export interface LibraryBook {
   title: string;
   author: string;
   genre: string;
+  topic: string; // Sub-topic / Type inside the genre (e.g., Ottoman Empire, WWII, Islamic War)
   status: ReadingStatus;
+  rating: number; // 0 to 5
   coverColor: string;
   spineAccent: string;
   textColor: string;
-  progress: number;
+  coverImage?: string; // Optional uploaded cover photo
+  pdfFileId?: string; // IndexedDB PDF reference
+  pdfFileName?: string;
+  pdfUrl?: string; // Optional external/cloud PDF link for cross-device sync
+  currentPage: number;
   totalPages: number;
+  progress: number;
   notes: string;
   createdAt: string;
   lastOpenedAt: string;

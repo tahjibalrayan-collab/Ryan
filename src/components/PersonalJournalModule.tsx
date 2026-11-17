@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  Download,
   FileText,
   Image as ImageIcon,
   Info,
@@ -17,7 +19,11 @@ import {
   Upload,
 } from 'lucide-react';
 import { UI_TEXT } from '../data/i18n';
-import { formatShortJournalDate, WALLPAPER_PRESETS } from '../data/seedData';
+import {
+  DIARY_MOOD_CATEGORIES,
+  formatShortJournalDate,
+  WALLPAPER_PRESETS,
+} from '../data/seedData';
 import {
   AppTheme,
   JournalBook,
@@ -34,6 +40,7 @@ interface PersonalJournalModuleProps {
   journals: JournalBook[];
   onUpdateJournal: (updated: JournalBook) => void;
   onCreateJournal: (book: JournalBook) => void;
+  onRestoreJournals: (books: JournalBook[]) => void;
   onDeleteJournal: (id: string) => void;
   customWallpaper: string | null;
   onUploadCustomWallpaper: (dataUrl: string) => void;
@@ -59,7 +66,7 @@ const COVER_SWATCHES = [
   { cover: '#2B2E36', text: '#F4F2ED', name: 'Obsidian Linen' },
 ];
 
-const MOOD_TAGS = ['Grounded', 'Focused', 'Curious', 'Serene', 'Reflective', 'Energized'];
+const MOOD_TAGS = [...DIARY_MOOD_CATEGORIES];
 
 const PAPER_STYLES: Array<{ id: JournalPaperStyle; label: string }> = [
   { id: 'plain', label: 'Plain Ivory' },
@@ -76,6 +83,7 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
   journals,
   onUpdateJournal,
   onCreateJournal,
+  onRestoreJournals,
   onDeleteJournal,
   customWallpaper,
   onUploadCustomWallpaper,
@@ -87,6 +95,9 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
   const [zoom, setZoom] = useState<number>(1);
   const [activePopover, setActivePopover] = useState<ActivePopover>('font');
   const [showNewModal, setShowNewModal] = useState(false);
+  const [moodFilter, setMoodFilter] = useState<string>('All');
+  const [flipDirection, setFlipDirection] = useState<1 | -1>(1);
+  const diaryRestoreRef = useRef<HTMLInputElement | null>(null);
 
   // New journal form state
   const [newTitle, setNewTitle] = useState('');
@@ -113,18 +124,54 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
     return list;
   }, [customWallpaper]);
 
-  const handleOpenBook = (book: JournalBook) => {
+  const handleOpenBook = (book: JournalBook, targetSpreadIdx = 0) => {
     setOpenBookId(book.id);
-    setSpreadIndex(0);
+    setSpreadIndex(targetSpreadIdx);
     setZoom(1);
     setActivePopover(null);
+  };
+
+  const handleExportDiary = () => {
+    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), journals }, null, 2);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `personal-archive-diary-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleRestoreDiary = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+        const list = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed.journals)
+          ? parsed.journals
+          : [];
+        if (list.length > 0) {
+          onRestoreJournals(list);
+        }
+      } catch {
+        // Ignore invalid JSON
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const handleCreateBook = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
     const swatch = COVER_SWATCHES[newCoverIdx];
-    const todayStr = formatShortJournalDate(new Date());
+    const now = new Date();
+    const todayStr = formatShortJournalDate(now);
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const created: JournalBook = {
       id: `journal-${Date.now()}`,
       title: newTitle.trim().toUpperCase(),
@@ -134,15 +181,17 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
       font: 'Scribble',
       paperStyle: 'plain',
       backdropId: 'plum-dusk',
-      updatedAt: new Date().toISOString(),
+      updatedAt: now.toISOString(),
       spreads: [
         {
           id: `spread-${Date.now()}`,
           leftDate: todayStr,
+          leftTime: timeStr,
           leftContent: '',
           rightDate: todayStr,
+          rightTime: timeStr,
           rightContent: '',
-          moodTag: 'Grounded',
+          moodTag: 'Good Day',
         },
       ],
     };
@@ -170,7 +219,20 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Shelf View (Screenshot 1 inspired)
+  const matchingMoodEntries = useMemo(() => {
+    if (moodFilter === 'All') return [];
+    const results: Array<{ book: JournalBook; spreadIdx: number; spread: JournalSpread }> = [];
+    journals.forEach((book) => {
+      book.spreads.forEach((sp, idx) => {
+        if (sp.moodTag === moodFilter) {
+          results.push({ book, spreadIdx: idx, spread: sp });
+        }
+      });
+    });
+    return results;
+  }, [journals, moodFilter]);
+
+  // Shelf View (Screenshot 1 inspired + Mood Categories & Backup/Restore)
   if (!openBook) {
     return (
       <div className="space-y-8">
@@ -195,14 +257,132 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowNewModal(true)}
-            className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 rounded-lg bg-[#D4A359] px-4 py-2.5 text-xs font-semibold text-[#111215] transition-colors hover:bg-[#DFB26D]"
-          >
-            <Plus className="h-4 w-4" />
-            <span>{t.newJournalBtn}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportDiary}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium ${
+                isPaper
+                  ? 'border-[#CFC8BA] bg-white text-[#1E1B18]'
+                  : 'border-white/10 bg-[#181A1F] text-[#D1D5DB]'
+              }`}
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>{lang === 'bn' ? 'ডায়েরি ব্যাকআপ' : 'Backup Diary'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => diaryRestoreRef.current?.click()}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium ${
+                isPaper
+                  ? 'border-[#CFC8BA] bg-white text-[#1E1B18]'
+                  : 'border-white/10 bg-[#181A1F] text-[#D1D5DB]'
+              }`}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              <span>{lang === 'bn' ? 'ডায়েরি রিস্টোর' : 'Restore'}</span>
+            </button>
+            <input
+              ref={diaryRestoreRef}
+              type="file"
+              accept="application/json"
+              onChange={handleRestoreDiary}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNewModal(true)}
+              className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 rounded-lg bg-[#D4A359] px-4 py-2 text-xs font-semibold text-[#111215] transition-colors hover:bg-[#DFB26D]"
+            >
+              <Plus className="h-4 w-4" />
+              <span>{t.newJournalBtn}</span>
+            </button>
+          </div>
+        </section>
+
+        {/* Diary Mood Day Categories Filter Strip */}
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMoodFilter('All')}
+              className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                moodFilter === 'All'
+                  ? isPaper
+                    ? 'border-[#1D355E] bg-[#1D355E] text-white'
+                    : 'border-[#D4A359] bg-[#D4A359] text-[#111215]'
+                  : isPaper
+                  ? 'border-[#CFC8BA] bg-white text-[#453F36]'
+                  : 'border-white/10 bg-[#181A1F] text-[#B5BAC6]'
+              }`}
+            >
+              {lang === 'bn' ? 'সব ডায়েরি বই' : 'All Diaries'}
+            </button>
+            {DIARY_MOOD_CATEGORIES.map((mood) => (
+              <button
+                key={mood}
+                type="button"
+                onClick={() => setMoodFilter(mood)}
+                className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  moodFilter === mood
+                    ? isPaper
+                      ? 'border-[#1D355E] bg-[#1D355E] text-white'
+                      : 'border-[#D4A359] bg-[#D4A359] text-[#111215]'
+                    : isPaper
+                    ? 'border-[#CFC8BA] bg-white text-[#453F36] hover:bg-[#F3F0EA]'
+                    : 'border-white/10 bg-[#181A1F] text-[#B5BAC6] hover:border-white/25'
+                }`}
+              >
+                {mood}
+              </button>
+            ))}
+          </div>
+
+          {moodFilter !== 'All' && (
+            <div
+              className={`rounded-2xl border p-4 ${
+                isPaper ? 'border-[#D5CFC2] bg-white' : 'border-white/10 bg-[#16181D]'
+              }`}
+            >
+              <p className={`text-xs font-semibold ${isPaper ? 'text-[#8D5B16]' : 'text-[#D4A359]'}`}>
+                {moodFilter} ({matchingMoodEntries.length}{' '}
+                {lang === 'bn' ? 'টি পাতা' : 'entries'})
+              </p>
+              {matchingMoodEntries.length === 0 ? (
+                <p className={`mt-2 text-xs ${isPaper ? 'text-[#665E52]' : 'text-[#8D93A1]'}`}>
+                  {lang === 'bn'
+                    ? 'এই মুডের কোনো ডায়েরি এন্ট্রি এখনো নেই। বই খুলে মুড ট্যাগ সেট করুন।'
+                    : 'No pages tagged with this day mood yet. Open any diary book and set the page mood.'}
+                </p>
+              ) : (
+                <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                  {matchingMoodEntries.map(({ book, spreadIdx, spread }) => (
+                    <button
+                      key={`${book.id}-${spread.id}`}
+                      type="button"
+                      onClick={() => handleOpenBook(book, spreadIdx)}
+                      className={`rounded-xl border p-3 text-left transition-colors ${
+                        isPaper
+                          ? 'border-[#D5CFC2] bg-[#FAF8F4] hover:border-[#1D355E]'
+                          : 'border-white/10 bg-[#121419] hover:border-[#D4A359]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[11px] opacity-75">
+                        <span className="font-mono-tabular">
+                          {spread.leftDate} {spread.leftTime ? `· ${spread.leftTime}` : ''}
+                        </span>
+                        <span>Page {spreadIdx + 1}</span>
+                      </div>
+                      <p className="mt-1 truncate text-xs font-semibold">{book.title}</p>
+                      <p className="mt-1 line-clamp-2 text-xs opacity-75">
+                        {spread.leftContent || spread.rightContent || 'Open entry...'}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Bookshelf Grid */}
@@ -375,7 +555,14 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
       : '';
 
   const updateSpreadField = (
-    field: 'leftContent' | 'rightContent' | 'leftDate' | 'rightDate' | 'moodTag',
+    field:
+      | 'leftContent'
+      | 'rightContent'
+      | 'leftDate'
+      | 'rightDate'
+      | 'leftTime'
+      | 'rightTime'
+      | 'moodTag',
     value: string
   ) => {
     const nextSpreads = openBook.spreads.map((sp, i) =>
@@ -389,14 +576,18 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
   };
 
   const handleAddSpread = () => {
-    const todayStr = formatShortJournalDate(new Date());
+    const now = new Date();
+    const todayStr = formatShortJournalDate(now);
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const newSpread: JournalSpread = {
       id: `spread-${Date.now()}`,
       leftDate: todayStr,
+      leftTime: timeStr,
       leftContent: '',
       rightDate: todayStr,
+      rightTime: timeStr,
       rightContent: '',
-      moodTag: 'Reflective',
+      moodTag: 'Good Day',
     };
     const nextSpreads = [...openBook.spreads, newSpread];
     onUpdateJournal({
@@ -404,14 +595,19 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
       spreads: nextSpreads,
       updatedAt: new Date().toISOString(),
     });
+    setFlipDirection(1);
     setSpreadIndex(nextSpreads.length - 1);
   };
 
   const handlePrevSpread = () => {
-    if (spreadIndex > 0) setSpreadIndex(spreadIndex - 1);
+    if (spreadIndex > 0) {
+      setFlipDirection(-1);
+      setSpreadIndex(spreadIndex - 1);
+    }
   };
 
   const handleNextSpread = () => {
+    setFlipDirection(1);
     if (spreadIndex < openBook.spreads.length - 1) {
       setSpreadIndex(spreadIndex + 1);
     } else {
@@ -713,63 +909,92 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
         </div>
       </div>
 
-      {/* Center: Realistic Two-Page Open Book Spread */}
+      {/* Center: Realistic Two-Page Open Book Spread with Animated Page Flip */}
       <div className="relative z-10 my-8 flex flex-1 items-center justify-center">
-        <div
-          className="grid w-full max-w-[780px] grid-cols-1 overflow-hidden rounded-2xl bg-[#FAF8F2] text-[#2A2622] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.75)] transition-transform duration-200 md:grid-cols-2"
-          style={{
-            transform: `scale(${zoom})`,
-          }}
-        >
-          {/* Left Page */}
-          <div
-            className={`journal-spine-left relative flex min-h-[380px] flex-col border-b border-black/10 p-6 sm:min-h-[440px] sm:p-8 md:border-b-0 md:border-r md:border-black/10 ${paperClass}`}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={`${openBook.id}-${currentSpread.id}`}
+            initial={{ opacity: 0, x: flipDirection * 28, rotateY: flipDirection * -4 }}
+            animate={{ opacity: 1, x: 0, rotateY: 0 }}
+            exit={{ opacity: 0, x: flipDirection * -28, rotateY: flipDirection * 4 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="grid w-full max-w-[780px] grid-cols-1 overflow-hidden rounded-2xl bg-[#FAF8F2] text-[#2A2622] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.75)] md:grid-cols-2"
+            style={{
+              transform: `scale(${zoom})`,
+            }}
           >
-            <div className="flex items-center justify-between text-[#6A6258]">
-              <span className="text-[11px] font-medium tracking-wide opacity-75">
-                {currentSpread.moodTag || 'Journal'}
-              </span>
-              <input
-                type="text"
-                aria-label="Left page date"
-                value={currentSpread.leftDate}
-                onChange={(e) => updateSpreadField('leftDate', e.target.value)}
-                className="font-journal-scribble w-24 bg-transparent text-right text-sm text-[#575047] focus:outline-none"
+            {/* Left Page */}
+            <div
+              className={`journal-spine-left relative flex min-h-[380px] flex-col border-b border-black/10 p-6 sm:min-h-[440px] sm:p-8 md:border-b-0 md:border-r md:border-black/10 ${paperClass}`}
+            >
+              <div className="flex items-center justify-between gap-2 text-[#6A6258]">
+                <button
+                  type="button"
+                  onClick={() => togglePopover('mood')}
+                  className="text-[11px] font-semibold tracking-wide opacity-80 hover:underline"
+                >
+                  {currentSpread.moodTag || 'Good Day'}
+                </button>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    aria-label="Left page time"
+                    value={currentSpread.leftTime || ''}
+                    placeholder="Time"
+                    onChange={(e) => updateSpreadField('leftTime', e.target.value)}
+                    className="font-journal-scribble w-16 bg-transparent text-right text-xs text-[#6E665B] focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    aria-label="Left page date"
+                    value={currentSpread.leftDate}
+                    onChange={(e) => updateSpreadField('leftDate', e.target.value)}
+                    className="font-journal-scribble w-20 bg-transparent text-right text-sm text-[#575047] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <textarea
+                value={currentSpread.leftContent}
+                onChange={(e) => updateSpreadField('leftContent', e.target.value)}
+                placeholder="Write freely on the left page..."
+                aria-label="Left journal page"
+                className={`mt-4 w-full flex-1 resize-none bg-transparent text-[#2B2621] placeholder:text-[#A39B8F] focus:outline-none ${fontClass}`}
               />
             </div>
 
-            <textarea
-              value={currentSpread.leftContent}
-              onChange={(e) => updateSpreadField('leftContent', e.target.value)}
-              placeholder="Write freely on the left page..."
-              aria-label="Left journal page"
-              className={`mt-4 w-full flex-1 resize-none bg-transparent text-[#2B2621] placeholder:text-[#A39B8F] focus:outline-none ${fontClass}`}
-            />
-          </div>
+            {/* Right Page */}
+            <div
+              className={`journal-spine-right relative flex min-h-[380px] flex-col p-6 sm:min-h-[440px] sm:p-8 ${paperClass}`}
+            >
+              <div className="flex items-center justify-end gap-1.5 text-[#6A6258]">
+                <input
+                  type="text"
+                  aria-label="Right page time"
+                  value={currentSpread.rightTime || ''}
+                  placeholder="Time"
+                  onChange={(e) => updateSpreadField('rightTime', e.target.value)}
+                  className="font-journal-scribble w-16 bg-transparent text-right text-xs text-[#6E665B] focus:outline-none"
+                />
+                <input
+                  type="text"
+                  aria-label="Right page date"
+                  value={currentSpread.rightDate}
+                  onChange={(e) => updateSpreadField('rightDate', e.target.value)}
+                  className="font-journal-scribble w-20 bg-transparent text-right text-sm text-[#575047] focus:outline-none"
+                />
+              </div>
 
-          {/* Right Page */}
-          <div
-            className={`journal-spine-right relative flex min-h-[380px] flex-col p-6 sm:min-h-[440px] sm:p-8 ${paperClass}`}
-          >
-            <div className="flex items-center justify-end text-[#6A6258]">
-              <input
-                type="text"
-                aria-label="Right page date"
-                value={currentSpread.rightDate}
-                onChange={(e) => updateSpreadField('rightDate', e.target.value)}
-                className="font-journal-scribble w-24 bg-transparent text-right text-sm text-[#575047] focus:outline-none"
+              <textarea
+                value={currentSpread.rightContent}
+                onChange={(e) => updateSpreadField('rightContent', e.target.value)}
+                placeholder="Continue your thoughts, study reflections, or takeaways here..."
+                aria-label="Right journal page"
+                className={`mt-4 w-full flex-1 resize-none bg-transparent text-[#2B2621] placeholder:text-[#A39B8F] focus:outline-none ${fontClass}`}
               />
             </div>
-
-            <textarea
-              value={currentSpread.rightContent}
-              onChange={(e) => updateSpreadField('rightContent', e.target.value)}
-              placeholder="Continue your thoughts, study reflections, or takeaways here..."
-              aria-label="Right journal page"
-              className={`mt-4 w-full flex-1 resize-none bg-transparent text-[#2B2621] placeholder:text-[#A39B8F] focus:outline-none ${fontClass}`}
-            />
-          </div>
-        </div>
+          </motion.div>
+        </AnimatePresence>
 
         {/* Floating Writing Font Popover (Matching Screenshot 2 right side) */}
         {activePopover === 'font' && (
@@ -839,9 +1064,9 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
 
         {/* Mood Stamp Popover */}
         {activePopover === 'mood' && (
-          <div className="absolute bottom-2 right-2 z-30 w-64 rounded-2xl border border-white/10 bg-[#202124]/95 p-4 shadow-2xl backdrop-blur-md">
-            <h3 className="text-xs font-semibold text-white">Page Mood</h3>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="absolute bottom-2 right-2 z-30 w-72 rounded-2xl border border-white/10 bg-[#202124]/95 p-4 shadow-2xl backdrop-blur-md">
+            <h3 className="text-xs font-semibold text-white">Day Mood Category</h3>
+            <div className="mt-3 grid grid-cols-1 gap-1.5">
               {MOOD_TAGS.map((tag) => (
                 <button
                   key={tag}
@@ -850,7 +1075,7 @@ export const PersonalJournalModule: React.FC<PersonalJournalModuleProps> = ({
                     updateSpreadField('moodTag', tag);
                     setActivePopover(null);
                   }}
-                  className={`rounded-xl border px-3 py-2 text-xs transition-colors ${
+                  className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
                     currentSpread.moodTag === tag
                       ? 'border-white bg-[#2C2E33] text-white'
                       : 'border-white/10 bg-[#26272B] text-[#B5BAC6] hover:border-white/30'

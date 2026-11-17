@@ -4,6 +4,7 @@ import { UI_TEXT } from './data/i18n';
 import {
   addDaysToDateKey,
   DEFAULT_GENRES,
+  DEFAULT_GENRE_TOPICS,
   formatDateKey,
   INITIAL_JOURNALS,
   INITIAL_LIBRARY_BOOKS,
@@ -31,7 +32,7 @@ import { LibraryFocusModule } from './components/LibraryFocusModule';
 export default function App() {
   const [activeModule, setActiveModule] = useState<NavModule>('methods');
   const [lang, setLang] = useLocalStorage<Language>('pa_language_v1', 'en');
-  const [theme, setTheme] = useLocalStorage<AppTheme>('pa_theme_v1', 'midnight');
+  const [theme, setTheme] = useLocalStorage<AppTheme>('pa_theme_v2', 'paper');
 
   const t = UI_TEXT[lang];
   const isPaper = theme === 'paper';
@@ -61,12 +62,24 @@ export default function App() {
     INITIAL_JOURNALS
   );
   const [libraryBooks, setLibraryBooks] = useLocalStorage<LibraryBook[]>(
-    'pa_library_books_v2',
+    'pa_library_books_v3',
     INITIAL_LIBRARY_BOOKS
   );
   const [libraryGenres, setLibraryGenres] = useLocalStorage<string[]>(
     'pa_library_genres_v2',
     DEFAULT_GENRES
+  );
+  const [genreTopics, setGenreTopics] = useLocalStorage<Record<string, string[]>>(
+    'pa_library_genre_topics_v1',
+    DEFAULT_GENRE_TOPICS
+  );
+
+  // Cloud sync state (PC <-> Mobile via /api/archive)
+  const [isSyncedOnline, setIsSyncedOnline] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useLocalStorage<string | null>(
+    'pa_last_synced_at_v1',
+    null
   );
 
   // Global wallpaper & ambient audio settings
@@ -98,6 +111,117 @@ export default function App() {
   useEffect(() => {
     ambientEngine.setVolume(musicVolume);
   }, [musicVolume]);
+
+  // Check cloud archive on initial visit (helpful when opening link on mobile for the first time)
+  useEffect(() => {
+    let active = true;
+    const hasLocalLibrary = window.localStorage.getItem('pa_library_books_v3') !== null;
+
+    fetch('/api/archive')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active || !data?.ok || !data.archive) return;
+        setIsSyncedOnline(true);
+        if (data.archive.syncedAt) {
+          setLastSyncedAt(data.archive.syncedAt);
+        }
+        if (!hasLocalLibrary) {
+          if (Array.isArray(data.archive.books)) setLibraryBooks(data.archive.books);
+          if (Array.isArray(data.archive.genres)) setLibraryGenres(data.archive.genres);
+          if (data.archive.genreTopics && typeof data.archive.genreTopics === 'object') {
+            setGenreTopics(data.archive.genreTopics);
+          }
+          if (Array.isArray(data.archive.journals)) setJournals(data.archive.journals);
+          if (Array.isArray(data.archive.studyLogs)) setStudyLogs(data.archive.studyLogs);
+          if (Array.isArray(data.archive.spacedItems)) setSpacedItems(data.archive.spacedItems);
+          if (Array.isArray(data.archive.savedRoutines)) {
+            setSavedRoutines(data.archive.savedRoutines);
+          }
+        }
+      })
+      .catch(() => {
+        // Offline or server unavailable; localStorage remains active
+      });
+
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSyncNow = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          books: libraryBooks,
+          genres: libraryGenres,
+          genreTopics,
+          journals,
+          studyLogs,
+          spacedItems,
+          savedRoutines,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsSyncedOnline(true);
+        if (data?.syncedAt) {
+          setLastSyncedAt(data.syncedAt);
+        }
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [
+    libraryBooks,
+    libraryGenres,
+    genreTopics,
+    journals,
+    studyLogs,
+    spacedItems,
+    savedRoutines,
+    setLastSyncedAt,
+  ]);
+
+  const handlePullFromServer = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/archive');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.ok && data.archive) {
+        if (Array.isArray(data.archive.books)) setLibraryBooks(data.archive.books);
+        if (Array.isArray(data.archive.genres)) setLibraryGenres(data.archive.genres);
+        if (data.archive.genreTopics && typeof data.archive.genreTopics === 'object') {
+          setGenreTopics(data.archive.genreTopics);
+        }
+        if (Array.isArray(data.archive.journals)) setJournals(data.archive.journals);
+        if (Array.isArray(data.archive.studyLogs)) setStudyLogs(data.archive.studyLogs);
+        if (Array.isArray(data.archive.spacedItems)) setSpacedItems(data.archive.spacedItems);
+        if (Array.isArray(data.archive.savedRoutines)) {
+          setSavedRoutines(data.archive.savedRoutines);
+        }
+        setIsSyncedOnline(true);
+        if (data.archive.syncedAt) {
+          setLastSyncedAt(data.archive.syncedAt);
+        }
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [
+    setLibraryBooks,
+    setLibraryGenres,
+    setGenreTopics,
+    setJournals,
+    setStudyLogs,
+    setSpacedItems,
+    setSavedRoutines,
+    setLastSyncedAt,
+  ]);
 
   const handleToggleMusic = useCallback(() => {
     if (isMusicPlaying) {
@@ -209,24 +333,74 @@ export default function App() {
     [setStudyLogs, setSpacedItems, handleAdvanceReview]
   );
 
+  const handleAddTopicToGenre = useCallback(
+    (genre: string, topic: string) => {
+      const cleanGenre = genre.trim();
+      const cleanTopic = topic.trim();
+      if (!cleanGenre || !cleanTopic) return;
+      setGenreTopics((prev) => {
+        const existing = prev[cleanGenre] || [];
+        if (existing.includes(cleanTopic)) return prev;
+        return {
+          ...prev,
+          [cleanGenre]: [...existing, cleanTopic],
+        };
+      });
+    },
+    [setGenreTopics]
+  );
+
+  const handleBulkAddBooks = useCallback(
+    (
+      items: LibraryBook[],
+      discoveredGenres: string[],
+      discoveredTopics: Array<{ genre: string; topic: string }>
+    ) => {
+      setLibraryBooks((prev) => [...items, ...prev]);
+      if (discoveredGenres.length > 0) {
+        setLibraryGenres((prev) => {
+          const next = [...prev];
+          for (const g of discoveredGenres) {
+            if (g && !next.includes(g)) next.push(g);
+          }
+          return next;
+        });
+      }
+      if (discoveredTopics.length > 0) {
+        setGenreTopics((prev) => {
+          const next = { ...prev };
+          for (const { genre, topic } of discoveredTopics) {
+            if (!genre || !topic) continue;
+            const list = next[genre] || [];
+            if (!list.includes(topic)) {
+              next[genre] = [...list, topic];
+            }
+          }
+          return next;
+        });
+      }
+    },
+    [setLibraryBooks, setLibraryGenres, setGenreTopics]
+  );
+
   const handleRemoveDuplicates = useCallback((): number => {
     const seen = new Set<string>();
+    const deduped: LibraryBook[] = [];
     let removedCount = 0;
-    setLibraryBooks((prev) => {
-      const deduped: LibraryBook[] = [];
-      for (const b of prev) {
-        const key = `${b.title.trim().toLowerCase()}::${b.author.trim().toLowerCase()}`;
-        if (seen.has(key)) {
-          removedCount++;
-        } else {
-          seen.add(key);
-          deduped.push(b);
-        }
+    for (const b of libraryBooks) {
+      const key = `${b.title.trim().toLowerCase()}::${b.author.trim().toLowerCase()}`;
+      if (seen.has(key)) {
+        removedCount++;
+      } else {
+        seen.add(key);
+        deduped.push(b);
       }
-      return deduped;
-    });
+    }
+    if (removedCount > 0) {
+      setLibraryBooks(deduped);
+    }
     return removedCount;
-  }, [setLibraryBooks]);
+  }, [libraryBooks, setLibraryBooks]);
 
   const activeWallpaper = useMemo(() => {
     if (activeWallpaperId === 'custom-upload' && customWallpaper) {
@@ -517,6 +691,7 @@ export default function App() {
               )
             }
             onCreateJournal={(book) => setJournals((prev) => [book, ...prev])}
+            onRestoreJournals={(restored) => setJournals(restored)}
             onDeleteJournal={(id) =>
               setJournals((prev) => prev.filter((j) => j.id !== id))
             }
@@ -532,20 +707,20 @@ export default function App() {
             onToggleTheme={() => setTheme(isPaper ? 'midnight' : 'paper')}
             books={libraryBooks}
             genres={libraryGenres}
+            genreTopics={genreTopics}
             onAddGenre={(g) =>
               setLibraryGenres((prev) =>
                 prev.includes(g) ? prev : [...prev, g]
               )
             }
+            onAddTopicToGenre={handleAddTopicToGenre}
             onUpdateBook={(updated) =>
               setLibraryBooks((prev) =>
                 prev.map((b) => (b.id === updated.id ? updated : b))
               )
             }
             onAddBook={(book) => setLibraryBooks((prev) => [book, ...prev])}
-            onBulkAddBooks={(items) =>
-              setLibraryBooks((prev) => [...items, ...prev])
-            }
+            onBulkAddBooks={handleBulkAddBooks}
             onRestoreBooks={(restored) => setLibraryBooks(restored)}
             onRemoveDuplicates={handleRemoveDuplicates}
             onDeleteBook={(id) =>
@@ -555,10 +730,15 @@ export default function App() {
               handleApplyToTimer({
                 minutes: 45,
                 subject: book.title,
-                topic: `${book.author} — Reading & Marginalia`,
+                topic: book.topic || book.author || 'Reading & Marginalia',
                 method: 'Japanese Todai 3-Zone & Machigai',
               })
             }
+            isSyncedOnline={isSyncedOnline}
+            isSyncing={isSyncing}
+            lastSyncedAt={lastSyncedAt}
+            onSyncNow={handleSyncNow}
+            onPullFromServer={handlePullFromServer}
             isMusicPlaying={isMusicPlaying}
             activeTrackId={activeTrackId}
             musicVolume={musicVolume}

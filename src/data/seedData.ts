@@ -47,6 +47,54 @@ export const DEFAULT_GENRES = [
   'Self-Help',
 ];
 
+export const DEFAULT_GENRE_TOPICS: Record<string, string[]> = {
+  History: [
+    'Islamic War',
+    'Ottoman Empire',
+    'World War I',
+    'World War II',
+    'Ancient & Medieval',
+    'Bengal & South Asia',
+  ],
+  Philosophy: [
+    'Stoicism',
+    'Islamic Philosophy',
+    'Existentialism',
+    'Ethics & Logic',
+  ],
+  Horror: [
+    'Gothic Horror',
+    'Psychological Horror',
+    'Cosmic & Supernatural',
+    'Folk Horror',
+  ],
+  'Mystery & Thriller': [
+    'Crime Thriller',
+    'Psychological Thriller',
+    'Action Thriller',
+    'Nordic Noir',
+    'Gothic Mystery',
+  ],
+  Science: ['Physics & Cosmology', 'Chemistry', 'Biology & Medicine', 'Mathematics'],
+  CSE: ['Algorithms & Data Structures', 'Systems & Architecture', 'AI & Machine Learning'],
+  Fiction: ['Contemporary', 'Literary Fiction', 'Classic Literature'],
+  Fantasy: ['Urban Fantasy', 'High Fantasy', 'Dark Fantasy'],
+  Biography: ['Historical Figures', 'Scientists & Thinkers', 'Memoirs'],
+  'Non-Fiction': ['Productivity & Focus', 'Economics & Society', 'Essays'],
+  'Self-Help': ['Mindset & Habits', 'Communication', 'Emotional Mastery'],
+  Romance: ['Contemporary Romance', 'Historical Romance'],
+};
+
+export const DIARY_MOOD_CATEGORIES = [
+  'Happy Day',
+  'Good Day',
+  'Sad Day',
+  'Bad Day',
+  'Rainy Day',
+  'Best Day of My Life',
+  'Worst Day of My Life',
+] as const;
+
 export const WALLPAPER_PRESETS: WallpaperPreset[] = [
   {
     id: 'obsidian-default',
@@ -615,22 +663,26 @@ export const INITIAL_JOURNALS: JournalBook[] = [
       {
         id: 'spread-1',
         leftDate: formatShortJournalDate(today),
+        leftTime: '08:30 AM',
         leftContent:
           "Didn't start at 6am like I thought I would, but calm, clear mind today. I gonna complete my chemistry notes before evening and keep my focus blocks clean.",
         rightDate: formatShortJournalDate(today),
+        rightTime: '09:15 PM',
         rightContent:
           'What helped most:\n- Putting my phone in the hallway before opening the textbook.\n- Breaking the chapter into two 35-minute active recall passes instead of staring at the whole syllabus.',
-        moodTag: 'Grounded',
+        moodTag: 'Good Day',
       },
       {
         id: 'spread-2',
         leftDate: formatShortJournalDate(oneDayAgo),
+        leftTime: '07:45 PM',
         leftContent:
           'Notice how resistance disappears after the first 7 minutes of writing. Once the pen moves, the fog clears.',
         rightDate: formatShortJournalDate(oneDayAgo),
+        rightTime: '10:20 PM',
         rightContent:
           'Evening check-in: Feeling quietly proud of finishing the problem set without checking solutions prematurely.',
-        moodTag: 'Focused',
+        moodTag: 'Happy Day',
       },
     ],
   },
@@ -648,12 +700,14 @@ export const INITIAL_JOURNALS: JournalBook[] = [
       {
         id: 'spread-dw-1',
         leftDate: formatShortJournalDate(today),
+        leftTime: '10:00 AM',
         leftContent:
           'Feynman check on Entropy:\nNot "disorder" in the vague sense — it is the count of microstates consistent with a macrostate. The system drifts toward the most probable configuration.',
         rightDate: formatShortJournalDate(today),
+        rightTime: '11:30 AM',
         rightContent:
           'Questions to test on Day 4 recall:\n1. Derive Gibbs free energy sign criteria from scratch.\n2. Why does reversible expansion maximize work?',
-        moodTag: 'Curious',
+        moodTag: 'Best Day of My Life',
       },
     ],
   },
@@ -671,93 +725,18 @@ export const INITIAL_JOURNALS: JournalBook[] = [
       {
         id: 'spread-mn-1',
         leftDate: formatShortJournalDate(threeDaysAgo),
+        leftTime: '11:10 PM',
         leftContent:
           'Rain outside the window. Slow reading speed is not a weakness when the goal is permanence rather than skimming.',
         rightDate: formatShortJournalDate(threeDaysAgo),
+        rightTime: '11:45 PM',
         rightContent:
           'Tomorrow morning priority:\nComplete 45 minutes of 1-4-7 spaced recall before opening any messages.',
-        moodTag: 'Serene',
+        moodTag: 'Rainy Day',
       },
     ],
   },
 ];
 
-export const INITIAL_LIBRARY_BOOKS: LibraryBook[] = [
-  {
-    id: 'lib-self-talk',
-    title: 'The Science of Self-Talk',
-    author: 'Ian Tuhovsky',
-    genre: 'Self-Help',
-    status: 'Want to read',
-    coverColor: '#6B1D3B',
-    spineAccent: '#E2C08D',
-    textColor: '#FAF5F7',
-    progress: 0,
-    totalPages: 196,
-    notes: 'Queued for mindset refinement & internal dialogue awareness.',
-    createdAt: today.toISOString(),
-    lastOpenedAt: today.toISOString(),
-  },
-  {
-    id: 'lib-make-it-stick',
-    title: 'Make It Stick',
-    author: 'Peter C. Brown',
-    genre: 'Science',
-    status: 'Reading',
-    coverColor: '#253B42',
-    spineAccent: '#D4A359',
-    textColor: '#F4F2ED',
-    progress: 72,
-    totalPages: 313,
-    notes:
-      'Retrieval practice beats re-reading every time. Desirable difficulty strengthens memory encoding.',
-    createdAt: oneDayAgo.toISOString(),
-    lastOpenedAt: today.toISOString(),
-  },
-  {
-    id: 'lib-deep-work',
-    title: 'Deep Work',
-    author: 'Cal Newport',
-    genre: 'Non-Fiction',
-    status: 'Finished',
-    coverColor: '#2D2A22',
-    spineAccent: '#C5B084',
-    textColor: '#F4F2ED',
-    progress: 100,
-    totalPages: 296,
-    notes:
-      'Attention residue degrades cognitive capacity for 20+ minutes after every quick context switch.',
-    createdAt: threeDaysAgo.toISOString(),
-    lastOpenedAt: threeDaysAgo.toISOString(),
-  },
-  {
-    id: 'lib-clrs',
-    title: 'Introduction to Algorithms',
-    author: 'Cormen, Leiserson',
-    genre: 'CSE',
-    status: 'Reading',
-    coverColor: '#1E2738',
-    spineAccent: '#8DA2CE',
-    textColor: '#F4F2ED',
-    progress: 45,
-    totalPages: 1312,
-    notes: 'Graph traversals, dynamic programming optimal substructure, and amortized analysis.',
-    createdAt: threeDaysAgo.toISOString(),
-    lastOpenedAt: oneDayAgo.toISOString(),
-  },
-  {
-    id: 'lib-meditations',
-    title: 'Meditations',
-    author: 'Marcus Aurelius',
-    genre: 'Philosophy',
-    status: 'Finished',
-    coverColor: '#3A2824',
-    spineAccent: '#D99B82',
-    textColor: '#F4F2ED',
-    progress: 100,
-    totalPages: 254,
-    notes: 'Focus strictly on the present action; discard unnecessary mental chatter.',
-    createdAt: sixDaysAgo.toISOString(),
-    lastOpenedAt: threeDaysAgo.toISOString(),
-  },
-];
+// Clean empty shelf on start so user adds their own books via + Add book or Bulk add
+export const INITIAL_LIBRARY_BOOKS: LibraryBook[] = [];

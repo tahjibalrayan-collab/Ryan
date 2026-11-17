@@ -78,7 +78,7 @@ export const UI_TEXT: Record<
 > = {
   en: {
     brand: 'Personal Archive',
-    subtitle: 'Made by Alta Hajib Nur Raiyan',
+    subtitle: 'Made by Al Tahjib Nur Raiyan',
     navMethods: 'Study Methods',
     navTimer: 'Focus Timer',
     navJournal: 'Journal',
@@ -132,7 +132,7 @@ export const UI_TEXT: Record<
     newJournalBtn: 'New Journal Book',
     writingFontTitle: 'Writing Font',
     writingFontSub: 'Pick a writing font for this book.',
-    librarySubtitle: 'Made by Alta Hajib Nur Raiyan',
+    librarySubtitle: 'Made by Al Tahjib Nur Raiyan',
     searchLibraryPlaceholder: 'Search by title, author, genre, or topic...',
     allBooks: 'All Books',
     wantToRead: 'Want to read',
@@ -151,7 +151,7 @@ export const UI_TEXT: Record<
   },
   bn: {
     brand: 'Personal Archive',
-    subtitle: 'তৈরি করেছেন আলতা হাজিব নূর রাইয়ান',
+    subtitle: 'মেড বাই আল তাহজিব নূর রাইয়ান',
     navMethods: 'স্টাডি মেথড',
     navTimer: 'ফোকাস টাইমার',
     navJournal: 'জার্নাল',
@@ -205,7 +205,7 @@ export const UI_TEXT: Record<
     newJournalBtn: 'নতুন জার্নাল তৈরি',
     writingFontTitle: 'লেখার ফন্ট',
     writingFontSub: 'এই বইটির জন্য একটি ফন্ট বেছে নিন।',
-    librarySubtitle: 'তৈরি করেছেন আলতা হাজিব নূর রাইয়ান',
+    librarySubtitle: 'মেড বাই আল তাহজিব নূর রাইয়ান',
     searchLibraryPlaceholder: 'বইয়ের নাম, লেখক, জনরা বা টপিক দিয়ে খুঁজুন...',
     allBooks: 'সব বই',
     wantToRead: 'পড়তে চাই',
