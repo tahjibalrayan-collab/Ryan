@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowUpDown,
+  Bookmark,
   BookOpen,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Cloud,
   CopyMinus,
@@ -11,36 +15,33 @@ import {
   Image as ImageIcon,
   Layers,
   Link as LinkIcon,
-  Moon,
+  Minus,
   Music2,
-  Pause,
-  Play,
+  Palette,
   Plus,
   RefreshCw,
   Search,
   Star,
-  Sun,
   Trash2,
   Upload,
-  Volume2,
   X,
 } from 'lucide-react';
 import { UI_TEXT } from '../data/i18n';
-import { WALLPAPER_PRESETS } from '../data/seedData';
 import {
   AppTheme,
+  FavoritePageBookmark,
   Language,
   LibraryBook,
+  NavModule,
   ReadingStatus,
-  WallpaperPreset,
 } from '../types';
-import { AMBIENT_TRACKS, AmbientTrackId } from '../utils/audioEngine';
 import { deletePdfBlob, loadPdfObjectUrl, savePdfBlob } from '../utils/pdfStorage';
+import { getThemeTokens } from '../utils/themeStyles';
 
 interface LibraryFocusModuleProps {
   lang: Language;
   theme: AppTheme;
-  onToggleTheme: () => void;
+  onNavigateModule: (mod: NavModule) => void;
   books: LibraryBook[];
   genres: string[];
   genreTopics: Record<string, string[]>;
@@ -60,30 +61,20 @@ interface LibraryFocusModuleProps {
   isSyncedOnline: boolean;
   isSyncing: boolean;
   lastSyncedAt: string | null;
-  onSyncNow: () => Promise<void>;
-  onPullFromServer: () => Promise<void>;
-  isMusicPlaying: boolean;
-  activeTrackId: AmbientTrackId;
-  musicVolume: number;
-  onToggleMusic: () => void;
-  onSelectTrack: (id: AmbientTrackId) => void;
-  onChangeVolume: (vol: number) => void;
-  activeWallpaperId: string;
-  onSelectWallpaper: (id: string) => void;
-  customWallpaper: string | null;
-  onUploadCustomWallpaper: (dataUrl: string) => void;
-  backdropDimming: number;
-  onChangeBackdropDimming: (val: number) => void;
+  onSyncNow: () => Promise<boolean>;
+  onPullFromServer: () => Promise<boolean>;
+  onExportFullBackup: () => Promise<string>;
+  onRestoreFullFile: (file: File) => Promise<{ ok: boolean; message: string }>;
 }
 
 const BOOK_BINDINGS = [
-  { cover: '#6B1D3B', spine: '#E2C08D' },
-  { cover: '#1D4E5F', spine: '#F2C572' },
-  { cover: '#2B4C7E', spine: '#C5D8F0' },
+  { cover: '#18181B', spine: '#FAFAFA' },
+  { cover: '#27272A', spine: '#D4D4D8' },
+  { cover: '#1D355E', spine: '#E2E8F0' },
   { cover: '#2E5339', spine: '#D4B483' },
-  { cover: '#7A3E26', spine: '#F3D2B3' },
+  { cover: '#6B1D3B', spine: '#E2C08D' },
   { cover: '#4B3869', spine: '#E0C3FC' },
-  { cover: '#2D2A22', spine: '#D4A359' },
+  { cover: '#7A3E26', spine: '#F3D2B3' },
 ];
 
 type SortOption = 'newest' | 'title' | 'author' | 'rating' | 'progress';
@@ -106,7 +97,6 @@ function parseBulkLines(
   const topicsList: Array<{ genre: string; topic: string }> = [];
 
   const parsedBooks: LibraryBook[] = lines.map((line, idx) => {
-    // Remove optional leading list numbering like "1. " or "12) "
     const cleaned = line.replace(/^\d+[.)]\s*/, '').trim();
 
     let title = cleaned;
@@ -121,7 +111,6 @@ function parseBulkLines(
       genre = parts[2] || 'Non-Fiction';
       topic = parts[3] || 'General';
     } else if (cleaned.includes('—') || cleaned.includes('–')) {
-      // Format: Title — Author - Genre - Topic
       const emParts = cleaned.split(/[—–]/);
       title = (emParts[0] || '').trim();
       const rest = emParts.slice(1).join('—').trim();
@@ -154,10 +143,11 @@ function parseBulkLines(
       coverColor: binding.cover,
       spineAccent: binding.spine,
       textColor: '#FAF7F2',
-      currentPage: 0,
+      currentPage: 1,
       totalPages: 300,
       progress: 0,
       notes: '',
+      favoritePages: [],
       createdAt: nowIso,
       lastOpenedAt: nowIso,
     };
@@ -173,7 +163,7 @@ function parseBulkLines(
 export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
   lang,
   theme,
-  onToggleTheme,
+  onNavigateModule,
   books,
   genres,
   genreTopics,
@@ -191,21 +181,11 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
   lastSyncedAt,
   onSyncNow,
   onPullFromServer,
-  isMusicPlaying,
-  activeTrackId,
-  musicVolume,
-  onToggleMusic,
-  onSelectTrack,
-  onChangeVolume,
-  activeWallpaperId,
-  onSelectWallpaper,
-  customWallpaper,
-  onUploadCustomWallpaper,
-  backdropDimming,
-  onChangeBackdropDimming,
+  onExportFullBackup,
+  onRestoreFullFile,
 }) => {
   const t = UI_TEXT[lang];
-  const isPaper = theme === 'paper';
+  const tk = getThemeTokens(theme);
 
   const [genreFilter, setGenreFilter] = useState<string>('All');
   const [topicFilter, setTopicFilter] = useState<string>('All');
@@ -224,12 +204,16 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
   const [newTopicName, setNewTopicName] = useState('');
   const [statusToast, setStatusToast] = useState<string | null>(null);
 
-  // PDF Reader modal state
-  const [activePdfModal, setActivePdfModal] = useState<{
-    title: string;
-    url: string;
+  // Interactive Book & PDF Reader Modal State (with 3D flip, Zoom & Favorite Pages)
+  const [readerState, setReaderState] = useState<{
+    bookId: string;
+    pdfUrl: string | null;
     isBlob: boolean;
+    page: number;
+    zoomPercent: number;
+    flipDir: 1 | -1;
   } | null>(null);
+  const [favLabelInput, setFavLabelInput] = useState('');
 
   // Add book form state
   const [newTitle, setNewTitle] = useState('');
@@ -272,7 +256,6 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
     return map;
   }, [books]);
 
-  // All topics inside the currently selected genre (combining defaults + books)
   const topicsInSelectedGenre = useMemo(() => {
     if (genreFilter === 'All') return [];
     const set = new Set<string>(genreTopics[genreFilter] || []);
@@ -322,32 +305,22 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
     [books, selectedBookId, filteredBooks]
   );
 
+  const readerBook = useMemo(
+    () => (readerState ? books.find((b) => b.id === readerState.bookId) ?? null : null),
+    [books, readerState]
+  );
+
   const bulkPreview = useMemo(
     () => (bulkText.trim() ? parseBulkLines(bulkText, books.length).parsedBooks.length : 0),
     [bulkText, books.length]
   );
-
-  const allWallpapers: WallpaperPreset[] = useMemo(() => {
-    const list = [...WALLPAPER_PRESETS];
-    if (customWallpaper) {
-      list.push({
-        id: 'custom-upload',
-        name: 'Custom Photo',
-        nameBn: 'কাস্টম ফটো',
-        type: 'image',
-        value: customWallpaper,
-        category: 'Uploaded',
-      });
-    }
-    return list;
-  }, [customWallpaper]);
 
   const handleCreateBook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
     const binding = BOOK_BINDINGS[newBindingIdx];
     const total = Math.max(1, parseInt(newPages, 10) || 300);
-    const current = newStatus === 'Finished' ? total : 0;
+    const current = newStatus === 'Finished' ? total : 1;
     const progress = newStatus === 'Finished' ? 100 : 0;
     const nowIso = new Date().toISOString();
     const bookId = `lib-${Date.now()}`;
@@ -384,6 +357,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
       totalPages: total,
       progress,
       notes: '',
+      favoritePages: [],
       createdAt: nowIso,
       lastOpenedAt: nowIso,
     };
@@ -418,34 +392,80 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
     showToast(
       lang === 'bn'
         ? `${parsedBooks.length}টি বই সফলভাবে যোগ হয়েছে।`
-        : `${parsedBooks.length} books shelved with genres & topics.`
+        : `${parsedBooks.length} books shelved cleanly.`
     );
   };
 
-  const handleOpenBookPdf = async (book: LibraryBook) => {
+  const handleOpenBookReader = async (book: LibraryBook) => {
+    let url: string | null = null;
+    let isBlob = false;
     if (book.pdfFileId) {
       const blobUrl = await loadPdfObjectUrl(book.pdfFileId);
       if (blobUrl) {
-        setActivePdfModal({ title: book.title, url: blobUrl, isBlob: true });
-        return;
+        url = blobUrl;
+        isBlob = true;
       }
     }
-    if (book.pdfUrl) {
-      setActivePdfModal({ title: book.title, url: book.pdfUrl, isBlob: false });
-      return;
+    if (!url && book.pdfUrl) {
+      url = book.pdfUrl;
+      isBlob = false;
     }
-    showToast(
-      lang === 'bn'
-        ? 'এই বইয়ে কোনো পিডিএফ যুক্ত নেই। নিচ থেকে পিডিএফ যোগ করুন।'
-        : 'No PDF attached yet. Attach a PDF file or link in the book details below.'
-    );
+
+    setReaderState({
+      bookId: book.id,
+      pdfUrl: url,
+      isBlob,
+      page: Math.max(1, book.currentPage || 1),
+      zoomPercent: 100,
+      flipDir: 1,
+    });
   };
 
-  const handleClosePdfModal = () => {
-    if (activePdfModal?.isBlob) {
-      URL.revokeObjectURL(activePdfModal.url);
+  const handleCloseReader = () => {
+    if (readerState?.isBlob && readerState.pdfUrl) {
+      URL.revokeObjectURL(readerState.pdfUrl);
     }
-    setActivePdfModal(null);
+    setReaderState(null);
+  };
+
+  const handleReaderPageChange = (newPage: number) => {
+    if (!readerState || !readerBook) return;
+    const clamped = Math.max(1, Math.min(readerBook.totalPages || 9999, newPage));
+    const dir: 1 | -1 = clamped >= readerState.page ? 1 : -1;
+    setReaderState({ ...readerState, page: clamped, flipDir: dir });
+
+    const progress = readerBook.totalPages
+      ? Math.round((clamped / readerBook.totalPages) * 100)
+      : 0;
+    onUpdateBook({
+      ...readerBook,
+      currentPage: clamped,
+      progress,
+      lastOpenedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleToggleFavoritePage = () => {
+    if (!readerBook || !readerState) return;
+    const list = readerBook.favoritePages || [];
+    const exists = list.some((f) => f.page === readerState.page);
+    const updatedFavs: FavoritePageBookmark[] = exists
+      ? list.filter((f) => f.page !== readerState.page)
+      : [
+          ...list,
+          {
+            page: readerState.page,
+            label: favLabelInput.trim() || `Page ${readerState.page}`,
+            savedAt: new Date().toISOString(),
+          },
+        ].sort((a, b) => a.page - b.page);
+
+    setFavLabelInput('');
+    onUpdateBook({
+      ...readerBook,
+      favoritePages: updatedFavs,
+      lastOpenedAt: new Date().toISOString(),
+    });
   };
 
   const handleAttachPdfToBook = async (
@@ -490,43 +510,16 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleBackup = () => {
-    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), books }, null, 2);
-    const blob = new Blob([payload], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `personal-archive-library-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast(lang === 'bn' ? 'ব্যাকআপ ডাউনলোড হয়েছে।' : 'Library backup downloaded.');
+  const handleBackup = async () => {
+    const summaryMsg = await onExportFullBackup();
+    showToast(summaryMsg);
   };
 
-  const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-        const restoredList: LibraryBook[] = Array.isArray(parsed)
-          ? parsed
-          : Array.isArray(parsed.books)
-          ? parsed.books
-          : [];
-        if (restoredList.length > 0) {
-          onRestoreBooks(restoredList);
-          showToast(
-            lang === 'bn'
-              ? `${restoredList.length}টি বই রিস্টোর করা হয়েছে।`
-              : `Restored ${restoredList.length} books.`
-          );
-        }
-      } catch {
-        showToast(lang === 'bn' ? 'ভুল ব্যাকআপ ফাইল।' : 'Invalid JSON backup file.');
-      }
-    };
-    reader.readAsText(file);
+    const res = await onRestoreFullFile(file);
+    showToast(res.message);
     e.target.value = '';
   };
 
@@ -563,70 +556,63 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
     setShowAddTopicInput(false);
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        onUploadCustomWallpaper(reader.result);
-        onSelectWallpaper('custom-upload');
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const activeTrack =
-    AMBIENT_TRACKS.find((tItem) => tItem.id === activeTrackId) ?? AMBIENT_TRACKS[0];
-
-  const cardSurface = isPaper
-    ? 'border-[#D5CFC2] bg-white text-[#1E1B18] shadow-sm'
-    : 'border-white/8 bg-[#16181D] text-[#F4F2ED]';
-  const inputSurface = isPaper
-    ? 'border-[#CFC8BA] bg-white text-[#1E1B18] placeholder:text-[#888072]'
-    : 'border-white/10 bg-[#111215] text-[#F4F2ED] placeholder:text-[#5F6573]';
-  const mutedText = isPaper ? 'text-[#665E52]' : 'text-[#9CA3AF]';
-  const headingText = isPaper ? 'text-[#1E1B18]' : 'text-[#F4F2ED]';
-  const accentText = isPaper ? 'text-[#8D5B16]' : 'text-[#D4A359]';
-  const activeBtnClass = isPaper
-    ? 'bg-[#1D355E] text-white border-[#1D355E]'
-    : 'bg-[#D4A359] text-[#111215] border-[#D4A359]';
-
   return (
     <div className="space-y-10">
-      {/* Centered Masthead with Prominent Creator Name */}
+      {/* Centered Clean Archival Masthead: Big "Archive" + Centered Smaller "Made by Altaf Jibon Raiyn" */}
       <section className="flex flex-col items-center text-center">
-        <h1 className={`font-display text-4xl font-semibold tracking-tight sm:text-5xl ${headingText}`}>
-          {t.brand}
+        <h1 className={`font-display text-4xl font-semibold tracking-tight sm:text-5xl ${tk.headingText}`}>
+          Archive
         </h1>
-        <p className={`mt-2 font-display text-lg font-medium italic sm:text-xl ${accentText}`}>
-          Made by Alta Hajib Nur Raiyan
+        <p className={`mt-1.5 font-display text-sm font-normal tracking-wide sm:text-base ${tk.mutedText}`}>
+          {t.subtitle}
         </p>
 
-        {/* Sync & Theme Controls */}
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5 text-xs">
+        {/* Cloud Sync + Quick Links to Music & Wallpaper Studios */}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs">
           <button
             type="button"
-            onClick={onSyncNow}
+            onClick={async () => {
+              const ok = await onSyncNow();
+              showToast(
+                ok
+                  ? lang === 'bn'
+                    ? 'ক্লাউড সিঙ্ক সম্পন্ন হয়েছে!'
+                    : 'Synced to Cloud! Open this URL on Mobile to sync.'
+                  : lang === 'bn'
+                  ? 'ক্লাউড সিঙ্ক ব্যর্থ।'
+                  : 'Cloud sync unavailable (saved locally).'
+              );
+            }}
             disabled={isSyncing}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 font-medium transition-colors ${inputSurface}`}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 font-medium transition-colors ${tk.inputSurface}`}
           >
-            <Cloud className={`h-3.5 w-3.5 ${isSyncedOnline ? 'text-emerald-500' : mutedText}`} />
+            <Cloud className={`h-3.5 w-3.5 ${isSyncedOnline ? 'text-emerald-500' : tk.mutedText}`} />
             <span>
               {isSyncing
                 ? lang === 'bn'
                   ? 'সিঙ্ক হচ্ছে...'
                   : 'Syncing...'
                 : lang === 'bn'
-                ? 'ক্লাউড সিঙ্ক করুন (PC ↔ Mobile)'
+                ? 'ক্লাউড সিঙ্ক (PC ↔ Mobile)'
                 : 'Sync to Cloud (PC ↔ Mobile)'}
             </span>
           </button>
 
           <button
             type="button"
-            onClick={onPullFromServer}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 font-medium transition-colors ${inputSurface}`}
+            onClick={async () => {
+              const ok = await onPullFromServer();
+              showToast(
+                ok
+                  ? lang === 'bn'
+                    ? 'ক্লাউড থেকে লোড হয়েছে!'
+                    : 'Archive loaded from Cloud!'
+                  : lang === 'bn'
+                  ? 'ক্লাউডে কোনো ব্যাকআপ পাওয়া যায়নি।'
+                  : 'No cloud backup found yet — click Sync to Cloud first.'
+              );
+            }}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 font-medium transition-colors ${tk.inputSurface}`}
           >
             <RefreshCw className="h-3.5 w-3.5" />
             <span>{lang === 'bn' ? 'ক্লাউড থেকে লোড' : 'Load from Cloud'}</span>
@@ -634,32 +620,32 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
 
           <button
             type="button"
-            onClick={onToggleTheme}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 font-medium transition-colors ${inputSurface}`}
+            onClick={() => onNavigateModule('wallpaper')}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 font-medium transition-colors ${tk.inputSurface}`}
           >
-            {isPaper ? (
-              <>
-                <Moon className="h-3.5 w-3.5" />
-                <span>{t.midnightStudy}</span>
-              </>
-            ) : (
-              <>
-                <Sun className="h-3.5 w-3.5 text-[#D4A359]" />
-                <span>{t.classicPaper}</span>
-              </>
-            )}
+            <Palette className="h-3.5 w-3.5" />
+            <span>{t.navWallpaper}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateModule('music')}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 font-medium transition-colors ${tk.inputSurface}`}
+          >
+            <Music2 className="h-3.5 w-3.5" />
+            <span>{t.navMusic}</span>
           </button>
         </div>
 
         {lastSyncedAt && (
-          <p className={`mt-1.5 text-[11px] ${mutedText}`}>
+          <p className={`mt-1.5 text-[11px] ${tk.mutedText}`}>
             {lang === 'bn' ? 'সর্বশেষ সিঙ্ক:' : 'Last synced:'}{' '}
             {new Date(lastSyncedAt).toLocaleTimeString()}
           </p>
         )}
 
         {/* Stats */}
-        <div className={`font-mono-tabular mt-4 text-xs ${mutedText}`}>
+        <div className={`font-mono-tabular mt-4 text-xs ${tk.mutedText}`}>
           {stats.total} {lang === 'bn' ? 'টি বই' : 'volumes'} · {stats.reading}{' '}
           {lang === 'bn' ? 'পড়ছি' : 'reading'} · {stats.toRead}{' '}
           {lang === 'bn' ? 'পড়তে চাই' : 'to read'} · {stats.finished}{' '}
@@ -669,14 +655,14 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
         {/* Search */}
         <div className="relative mt-4 w-full max-w-xl">
           <Search
-            className={`pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 ${mutedText}`}
+            className={`pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 ${tk.mutedText}`}
           />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t.searchLibraryPlaceholder}
-            className={`w-full rounded-xl border py-2.5 pl-10 pr-4 text-sm shadow-sm focus:outline-none ${inputSurface}`}
+            className={`w-full rounded-xl border py-2.5 pl-10 pr-4 text-sm shadow-sm focus:outline-none ${tk.inputSurface}`}
           />
         </div>
 
@@ -686,11 +672,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
             type="button"
             onClick={() => setGenreFilter('All')}
             className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-              genreFilter === 'All'
-                ? activeBtnClass
-                : isPaper
-                ? 'border-[#CFC8BA] bg-white text-[#453F36] hover:bg-[#F3F0EA]'
-                : 'border-white/10 bg-[#181A20] text-[#B5BAC6] hover:border-white/25'
+              genreFilter === 'All' ? tk.activeTabBtn : tk.inputSurface
             }`}
           >
             {lang === 'bn' ? 'সব জনরা' : 'All'}
@@ -705,11 +687,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                 type="button"
                 onClick={() => setGenreFilter(g)}
                 className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  active
-                    ? activeBtnClass
-                    : isPaper
-                    ? 'border-[#CFC8BA] bg-white text-[#453F36] hover:bg-[#F3F0EA]'
-                    : 'border-white/10 bg-[#181A20] text-[#B5BAC6] hover:border-white/25'
+                  active ? tk.activeTabBtn : tk.inputSurface
                 }`}
               >
                 {g}
@@ -728,11 +706,11 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                 value={newGenreName}
                 onChange={(e) => setNewGenreName(e.target.value)}
                 placeholder={lang === 'bn' ? 'নতুন জনরা...' : 'New genre...'}
-                className={`w-32 rounded-lg border px-2.5 py-1 text-xs focus:outline-none ${inputSurface}`}
+                className={`w-32 rounded-lg border px-2.5 py-1 text-xs focus:outline-none ${tk.inputSurface}`}
               />
               <button
                 type="submit"
-                className="rounded-lg bg-[#D4A359] px-2.5 py-1 text-xs font-semibold text-[#111215]"
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${tk.primaryBtn}`}
               >
                 +
               </button>
@@ -741,35 +719,27 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
             <button
               type="button"
               onClick={() => setShowAddGenreInput(true)}
-              className={`whitespace-nowrap rounded-lg border border-dashed px-3 py-1.5 text-xs font-medium transition-colors ${
-                isPaper
-                  ? 'border-[#ABA292] text-[#544D42] hover:border-[#1D355E]'
-                  : 'border-white/20 text-[#9CA3AF] hover:border-white/40 hover:text-white'
-              }`}
+              className={`whitespace-nowrap rounded-lg border border-dashed px-3 py-1.5 text-xs font-medium ${tk.inputSurface}`}
             >
               + {lang === 'bn' ? 'জনরা' : 'Genre'}
             </button>
           )}
         </div>
 
-        {/* Sub-Topics / Types inside Selected Genre (e.g., History -> Islamic War, Ottoman Empire, WWII) */}
+        {/* Sub-Topics / Types inside Selected Genre */}
         {genreFilter !== 'All' && (
           <div
-            className={`mt-3 flex max-w-4xl flex-wrap items-center justify-center gap-2 rounded-xl border px-4 py-2.5 ${
-              isPaper
-                ? 'border-[#D5CFC2] bg-[#F5F2EB]'
-                : 'border-white/10 bg-[#15171D]'
-            }`}
+            className={`mt-3 flex max-w-4xl flex-wrap items-center justify-center gap-2 rounded-xl border px-4 py-2.5 ${tk.subCardSurface}`}
           >
-            <span className={`text-[11px] font-semibold ${accentText}`}>
+            <span className={`text-[11px] font-semibold ${tk.accentText}`}>
               {genreFilter} {lang === 'bn' ? 'টপিক/টাইপ:' : 'Topics / Types:'}
             </span>
 
             <button
               type="button"
               onClick={() => setTopicFilter('All')}
-              className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                topicFilter === 'All' ? activeBtnClass : inputSurface
+              className={`rounded-md border px-2.5 py-1 text-[11px] font-medium ${
+                topicFilter === 'All' ? tk.activeTabBtn : tk.inputSurface
               }`}
             >
               {lang === 'bn' ? 'সব টপিক' : 'All Topics'}
@@ -783,8 +753,8 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                   key={topicName}
                   type="button"
                   onClick={() => setTopicFilter(topicName)}
-                  className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    active ? activeBtnClass : inputSurface
+                  className={`rounded-md border px-2.5 py-1 text-[11px] font-medium ${
+                    active ? tk.activeTabBtn : tk.inputSurface
                   }`}
                 >
                   {topicName}
@@ -803,11 +773,11 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                   value={newTopicName}
                   onChange={(e) => setNewTopicName(e.target.value)}
                   placeholder={lang === 'bn' ? 'নতুন টপিক...' : 'e.g., Ottoman Empire'}
-                  className={`w-36 rounded-md border px-2 py-1 text-[11px] focus:outline-none ${inputSurface}`}
+                  className={`w-36 rounded-md border px-2 py-1 text-[11px] focus:outline-none ${tk.inputSurface}`}
                 />
                 <button
                   type="submit"
-                  className="rounded-md bg-[#D4A359] px-2 py-1 text-[11px] font-semibold text-[#111215]"
+                  className={`rounded-md px-2 py-1 text-[11px] font-semibold ${tk.primaryBtn}`}
                 >
                   +
                 </button>
@@ -816,11 +786,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
               <button
                 type="button"
                 onClick={() => setShowAddTopicInput(true)}
-                className={`rounded-md border border-dashed px-2.5 py-1 text-[11px] font-medium ${
-                  isPaper
-                    ? 'border-[#ABA292] text-[#544D42]'
-                    : 'border-white/20 text-[#9CA3AF]'
-                }`}
+                className={`rounded-md border border-dashed px-2.5 py-1 text-[11px] font-medium ${tk.inputSurface}`}
               >
                 + {lang === 'bn' ? 'টপিক / টাইপ' : 'Topic / Type'}
               </button>
@@ -845,11 +811,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                 type="button"
                 onClick={() => setStatusFilter(st.id)}
                 className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3.5 py-1.5 text-xs font-medium transition-colors ${
-                  active
-                    ? activeBtnClass
-                    : isPaper
-                    ? 'border-[#CFC8BA] bg-white text-[#453F36] hover:bg-[#F3F0EA]'
-                    : 'border-white/10 bg-[#181A20] text-[#B5BAC6] hover:border-white/25'
+                  active ? tk.activeTabBtn : tk.inputSurface
                 }`}
               >
                 {st.id === 'Finished' && <Check className="h-3.5 w-3.5 text-emerald-500" />}
@@ -862,24 +824,18 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
       </section>
 
       {statusToast && (
-        <div className="mx-auto max-w-xl rounded-xl border border-[#D4A359]/40 bg-[#D4A359]/15 px-4 py-2.5 text-center text-xs font-medium">
+        <div className="mx-auto max-w-xl rounded-xl border border-emerald-500/35 bg-emerald-500/15 px-4 py-2.5 text-center text-xs font-medium text-emerald-500">
           {statusToast}
         </div>
       )}
 
-      {/* Realistic Spine Bookshelf + Hover Info Card */}
+      {/* ==================== SINGLE-LINE NON-WRAPPING BOOKSHELF ==================== */}
       <section className="space-y-4">
-        <div
-          className={`relative overflow-visible rounded-2xl border shadow-[inset_0_16px_42px_rgba(0,0,0,0.35)] ${
-            isPaper
-              ? 'border-[#C9C1B2] bg-gradient-to-b from-[#DFD8CA] via-[#EAE4D7] to-[#D7CFC0]'
-              : 'border-white/10 bg-gradient-to-b from-[#101116] via-[#171920] to-[#121318]'
-          }`}
-        >
-          <div className="min-h-[250px] px-6 pt-12 pb-0">
+        <div className={`relative rounded-2xl border shadow-inner ${tk.cardSurface}`}>
+          <div className="min-h-[250px] px-4 pt-14 pb-0">
             {filteredBooks.length === 0 ? (
               <div className="flex h-48 flex-col items-center justify-center gap-3 text-center">
-                <p className={`text-sm font-medium ${headingText}`}>
+                <p className={`text-sm font-medium ${tk.headingText}`}>
                   {books.length === 0
                     ? lang === 'bn'
                       ? 'আপনার বইয়ের শেল্ফ এখন খালি — নিজের বই যোগ করুন'
@@ -892,21 +848,22 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowAddBookModal(true)}
-                    className={`rounded-lg px-3.5 py-2 text-xs font-semibold ${activeBtnClass}`}
+                    className={`rounded-lg px-3.5 py-2 text-xs font-semibold ${tk.primaryBtn}`}
                   >
                     + {t.addBookBtn}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowBulkModal(true)}
-                    className={`rounded-lg border px-3.5 py-2 text-xs font-medium ${inputSurface}`}
+                    className={`rounded-lg border px-3.5 py-2 text-xs font-medium ${tk.inputSurface}`}
                   >
                     {t.bulkAddBtn}
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="flex flex-wrap items-end gap-3 px-2">
+              /* CRITICAL: flex-nowrap + overflow-x-auto keeps all spines side-by-side on ONE straight line! */
+              <div className="flex flex-nowrap items-end gap-1 overflow-x-auto px-2 pb-0">
                 {filteredBooks.map((book) => {
                   const isSelected = selectedBook?.id === book.id;
                   const isHovered = hoveredBookId === book.id;
@@ -919,23 +876,22 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                   return (
                     <div
                       key={book.id}
-                      className="relative"
+                      className="relative shrink-0"
                       onMouseEnter={() => setHoveredBookId(book.id)}
                       onMouseLeave={() => setHoveredBookId(null)}
                     >
-                      {/* Hover Preview Card (Shows Author, Genre, Topic, Rating, Pages on Hover) */}
                       {isHovered && (
-                        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 w-56 -translate-x-1/2 rounded-xl border border-white/15 bg-[#1C1E24]/95 p-3 text-left text-xs text-[#F4F2ED] shadow-2xl backdrop-blur-md">
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-2 w-52 -translate-x-1/2 rounded-xl border border-white/15 bg-[#111113]/95 p-3 text-left text-xs text-white shadow-2xl backdrop-blur-md">
                           <p className="font-display font-semibold leading-snug">{book.title}</p>
-                          <p className="mt-0.5 text-[11px] text-[#B5BAC6]">
+                          <p className="mt-0.5 text-[11px] text-zinc-400">
                             {book.author || (lang === 'bn' ? 'অজানা লেখক' : 'Author not set')}
                           </p>
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-[#D4A359]">
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] text-zinc-300">
                             <span>{book.genre}</span>
                             <span>·</span>
                             <span>{book.topic}</span>
                           </div>
-                          <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-1.5 text-[10px] text-[#9CA3AF]">
+                          <div className="mt-1.5 flex items-center justify-between border-t border-white/10 pt-1 text-[10px] text-zinc-400">
                             <span>
                               {'★'.repeat(book.rating)}
                               {'☆'.repeat(5 - book.rating)}
@@ -950,31 +906,31 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                       <button
                         type="button"
                         onClick={() => setSelectedBookId(book.id)}
-                        className={`group relative flex ${heightClass} w-12 shrink-0 flex-col items-center justify-between rounded-t-sm border-x border-t py-3 transition-all duration-200 sm:w-14 ${
+                        className={`group relative flex ${heightClass} w-9 shrink-0 flex-col items-center justify-between rounded-t-sm border-x border-t py-2.5 transition-all duration-200 sm:w-10 ${
                           isSelected
-                            ? '-translate-y-3 border-[#D4A359] shadow-[0_14px_24px_rgba(0,0,0,0.55)] ring-2 ring-[#D4A359]'
-                            : 'border-white/20 hover:-translate-y-2 shadow-[4px_0_12px_rgba(0,0,0,0.35)]'
+                            ? '-translate-y-2.5 ring-2 ring-current shadow-xl z-10'
+                            : 'border-white/20 hover:-translate-y-1.5 shadow-md'
                         }`}
                         style={{
                           backgroundColor: book.coverColor,
                           color: book.textColor,
                           backgroundImage:
-                            'linear-gradient(90deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 24%, rgba(0,0,0,0.28) 92%)',
+                            'linear-gradient(90deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 24%, rgba(0,0,0,0.28) 92%)',
                         }}
                       >
                         <span
-                          className="h-1 w-8 rounded-full opacity-85"
+                          className="h-1 w-6 rounded-full opacity-85"
                           style={{ backgroundColor: book.spineAccent }}
                         />
-                        <span className="book-spine-text my-2 max-h-36 overflow-hidden text-ellipsis whitespace-nowrap font-display text-[11px] font-medium tracking-wide">
+                        <span className="book-spine-text my-1.5 max-h-36 overflow-hidden text-ellipsis whitespace-nowrap font-display text-[10px] font-medium tracking-wide">
                           {book.title}
                         </span>
-                        <div className="flex flex-col items-center gap-1">
+                        <div className="flex flex-col items-center gap-0.5">
                           <span
-                            className="h-1 w-7 rounded-full opacity-80"
+                            className="h-0.5 w-5 rounded-full opacity-80"
                             style={{ backgroundColor: book.spineAccent }}
                           />
-                          <span className="font-mono-tabular text-[9px] opacity-85">
+                          <span className="font-mono-tabular text-[8px] opacity-85">
                             {book.progress}%
                           </span>
                         </div>
@@ -986,7 +942,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
             )}
           </div>
 
-          <div className={`${isPaper ? 'shelf-ledge-light' : 'shelf-ledge'} h-5 w-full rounded-b-2xl`} />
+          <div className={`${tk.shelfLedge} h-4 w-full rounded-b-2xl`} />
         </div>
 
         {/* Bottom Library Action Toolbar */}
@@ -995,7 +951,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
             <button
               type="button"
               onClick={() => setShowAddBookModal(true)}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${activeBtnClass}`}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${tk.primaryBtn}`}
             >
               <Plus className="h-3.5 w-3.5" />
               <span>{t.addBookBtn}</span>
@@ -1004,7 +960,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
             <button
               type="button"
               onClick={() => setShowBulkModal(true)}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${inputSurface}`}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium ${tk.inputSurface}`}
             >
               <Layers className="h-3.5 w-3.5" />
               <span>{t.bulkAddBtn}</span>
@@ -1013,16 +969,18 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
             <button
               type="button"
               onClick={handleBackup}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${inputSurface}`}
+              title="Download full lossless backup (Books, PDFs, Journals, Images, Routines & Audio)"
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium ${tk.inputSurface}`}
             >
               <Download className="h-3.5 w-3.5" />
-              <span>{t.backupBtn}</span>
+              <span>{lang === 'bn' ? 'সম্পূর্ণ ব্যাকআপ' : 'Full Backup'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => restoreInputRef.current?.click()}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${inputSurface}`}
+              title="Restore full Archive JSON backup"
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium ${tk.inputSurface}`}
             >
               <Upload className="h-3.5 w-3.5" />
               <span>{t.restoreBtn}</span>
@@ -1038,7 +996,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
             <button
               type="button"
               onClick={handleRemoveDuplicatesClick}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${inputSurface}`}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium ${tk.inputSurface}`}
             >
               <CopyMinus className="h-3.5 w-3.5" />
               <span>{t.removeDuplicatesBtn}</span>
@@ -1046,13 +1004,13 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <ArrowUpDown className={`h-3.5 w-3.5 ${mutedText}`} />
-            <span className={`text-xs ${mutedText}`}>{lang === 'bn' ? 'সাজান' : 'Sort'}</span>
+            <ArrowUpDown className={`h-3.5 w-3.5 ${tk.mutedText}`} />
+            <span className={`text-xs ${tk.mutedText}`}>{lang === 'bn' ? 'সাজান' : 'Sort'}</span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
               aria-label="Sort books"
-              className={`rounded-lg border px-3 py-1.5 text-xs focus:outline-none ${inputSurface}`}
+              className={`rounded-lg border px-3 py-1.5 text-xs focus:outline-none ${tk.inputSurface}`}
             >
               <option value="newest">{lang === 'bn' ? 'নতুন আগে' : 'Newest'}</option>
               <option value="title">{lang === 'bn' ? 'শিরোনাম (A-Z)' : 'Title A–Z'}</option>
@@ -1063,11 +1021,10 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
           </div>
         </div>
 
-        {/* Selected Book Full Editor & PDF Reader Inspector */}
+        {/* Selected Book Inspector */}
         {selectedBook && (
-          <div className={`grid grid-cols-1 gap-6 rounded-2xl border p-6 lg:grid-cols-12 ${cardSurface}`}>
+          <div className={`grid grid-cols-1 gap-6 rounded-2xl border p-6 lg:grid-cols-12 ${tk.cardSurface}`}>
             <div className="flex flex-col gap-5 sm:flex-row lg:col-span-6">
-              {/* Cover Visual + Upload Cover Photo */}
               <div className="flex flex-col items-center gap-2 shrink-0">
                 <div
                   className="relative flex h-52 w-36 flex-col justify-between overflow-hidden rounded-r-xl rounded-l-sm p-3.5 shadow-xl"
@@ -1087,25 +1044,28 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                 >
                   {!selectedBook.coverImage && (
                     <div
-                      className="absolute inset-y-0 left-0 w-2.5 rounded-l-sm"
+                      className="absolute inset-y-0 left-0 w-2 rounded-l-sm"
                       style={{ backgroundColor: selectedBook.spineAccent }}
                     />
                   )}
-                  <div className="pl-1.5">
+                  <div className="pl-1">
                     <span className="text-[9px] font-semibold uppercase tracking-wider opacity-85">
                       {selectedBook.genre}
                     </span>
-                    <p className="mt-1.5 line-clamp-4 font-display text-sm font-medium leading-snug">
+                    <h3 className="mt-1.5 font-display text-sm font-medium leading-snug line-clamp-4">
                       {selectedBook.title}
+                    </h3>
+                  </div>
+                  <div className="pl-1">
+                    <p className="truncate text-[10px] opacity-85">{selectedBook.topic}</p>
+                    <p className="truncate text-[11px] font-medium opacity-95">
+                      {selectedBook.author}
                     </p>
                   </div>
-                  <p className="pl-1.5 text-[10px] opacity-90">
-                    {selectedBook.author || (lang === 'bn' ? 'লেখক যোগ করুন' : 'No author yet')}
-                  </p>
                 </div>
 
                 <label
-                  className={`inline-flex cursor-pointer items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium ${inputSurface}`}
+                  className={`inline-flex cursor-pointer items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium ${tk.inputSurface}`}
                 >
                   <ImageIcon className="h-3 w-3" />
                   <span>{lang === 'bn' ? 'কভার ছবি' : 'Cover Photo'}</span>
@@ -1118,74 +1078,37 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                 </label>
               </div>
 
-              {/* Editable Title, Author, Genre, Topic, Rating, Pages */}
-              <div className="flex-1 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <input
-                    type="text"
-                    value={selectedBook.title}
-                    onChange={(e) =>
-                      onUpdateBook({
-                        ...selectedBook,
-                        title: e.target.value,
-                        lastOpenedAt: new Date().toISOString(),
-                      })
-                    }
-                    aria-label="Edit book title"
-                    className={`w-full rounded-lg border px-2.5 py-1 font-display text-lg font-medium focus:outline-none ${inputSurface}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selectedBook.pdfFileId) {
-                        deletePdfBlob(selectedBook.pdfFileId).catch(() => {});
+              <div className="flex flex-1 flex-col justify-between space-y-3">
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <input
+                      type="text"
+                      value={selectedBook.title}
+                      onChange={(e) =>
+                        onUpdateBook({ ...selectedBook, title: e.target.value })
                       }
-                      onDeleteBook(selectedBook.id);
-                    }}
-                    title={lang === 'bn' ? 'বইটি ডিলিট করুন' : 'Delete Book'}
-                    aria-label={`Delete ${selectedBook.title}`}
-                    className="rounded-lg p-2 text-[#717786] hover:bg-red-500/10 hover:text-red-500"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                      aria-label="Book Title"
+                      className={`font-display rounded-lg border px-2.5 py-1 text-base font-medium focus:outline-none ${tk.inputSurface}`}
+                    />
+                    <input
+                      type="text"
+                      value={selectedBook.author}
+                      placeholder={lang === 'bn' ? 'লেখকের নাম লিখুন...' : 'Add author name...'}
+                      onChange={(e) =>
+                        onUpdateBook({ ...selectedBook, author: e.target.value })
+                      }
+                      aria-label="Book Author"
+                      className={`rounded-lg border px-2.5 py-1 text-xs focus:outline-none ${tk.inputSurface}`}
+                    />
+                  </div>
 
-                {/* Editable Author */}
-                <div>
-                  <label className={`block text-[11px] font-medium ${mutedText}`}>
-                    {lang === 'bn' ? 'লেখকের নাম (যেকোনো সময় এডিট করুন)' : 'Author Name'}
-                  </label>
-                  <input
-                    type="text"
-                    value={selectedBook.author}
-                    placeholder={lang === 'bn' ? 'লেখকের নাম লিখুন...' : 'Add or edit author...'}
-                    onChange={(e) =>
-                      onUpdateBook({
-                        ...selectedBook,
-                        author: e.target.value,
-                        lastOpenedAt: new Date().toISOString(),
-                      })
-                    }
-                    className={`mt-1 w-full rounded-lg border px-3 py-1.5 text-xs focus:outline-none ${inputSurface}`}
-                  />
-                </div>
-
-                {/* Genre & Topic Editors */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className={`block text-[11px] font-medium ${mutedText}`}>
-                      {lang === 'bn' ? 'জনরা' : 'Genre'}
-                    </label>
+                  <div className="grid grid-cols-2 gap-2">
                     <select
                       value={selectedBook.genre}
                       onChange={(e) =>
-                        onUpdateBook({
-                          ...selectedBook,
-                          genre: e.target.value,
-                          lastOpenedAt: new Date().toISOString(),
-                        })
+                        onUpdateBook({ ...selectedBook, genre: e.target.value })
                       }
-                      className={`mt-1 w-full rounded-lg border px-2.5 py-1.5 text-xs focus:outline-none ${inputSurface}`}
+                      className={`rounded-lg border px-2 py-1 text-xs focus:outline-none ${tk.inputSurface}`}
                     >
                       {genres.map((g) => (
                         <option key={g} value={g}>
@@ -1193,193 +1116,128 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                         </option>
                       ))}
                     </select>
-                  </div>
-                  <div>
-                    <label className={`block text-[11px] font-medium ${mutedText}`}>
-                      {lang === 'bn' ? 'টপিক / টাইপ' : 'Topic / Type'}
-                    </label>
                     <input
                       type="text"
                       value={selectedBook.topic}
+                      placeholder={lang === 'bn' ? 'টপিক লিখুন...' : 'Topic / Type...'}
                       onChange={(e) => {
                         const val = e.target.value;
-                        onUpdateBook({
-                          ...selectedBook,
-                          topic: val,
-                          lastOpenedAt: new Date().toISOString(),
-                        });
+                        onUpdateBook({ ...selectedBook, topic: val });
+                        if (val.trim()) onAddTopicToGenre(selectedBook.genre, val.trim());
                       }}
-                      onBlur={() => {
-                        if (selectedBook.topic.trim()) {
-                          onAddTopicToGenre(selectedBook.genre, selectedBook.topic.trim());
-                        }
-                      }}
-                      placeholder="e.g., Ottoman Empire"
-                      className={`mt-1 w-full rounded-lg border px-2.5 py-1.5 text-xs focus:outline-none ${inputSurface}`}
+                      className={`rounded-lg border px-2.5 py-1 text-xs focus:outline-none ${tk.inputSurface}`}
                     />
                   </div>
-                </div>
 
-                {/* Status + Star Rating */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <div className="flex flex-wrap gap-1.5">
-                    {(['Want to read', 'Reading', 'Finished'] as ReadingStatus[]).map((st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        onClick={() => {
-                          const total = Math.max(1, selectedBook.totalPages);
-                          const current =
-                            st === 'Finished'
-                              ? total
-                              : st === 'Want to read'
-                              ? 0
-                              : Math.max(1, selectedBook.currentPage);
-                          onUpdateBook({
-                            ...selectedBook,
-                            status: st,
-                            currentPage: current,
-                            progress: Math.round((current / total) * 100),
-                            lastOpenedAt: new Date().toISOString(),
-                          });
-                        }}
-                        className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                          selectedBook.status === st ? activeBtnClass : inputSurface
-                        }`}
-                      >
-                        {st}
-                      </button>
-                    ))}
-                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() =>
+                            onUpdateBook({
+                              ...selectedBook,
+                              rating: selectedBook.rating === star ? 0 : star,
+                            })
+                          }
+                          aria-label={`Rate ${star} stars`}
+                        >
+                          <Star
+                            className={`h-4 w-4 ${
+                              star <= selectedBook.rating
+                                ? 'fill-amber-400 text-amber-400'
+                                : tk.mutedText
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
 
-                  {/* Interactive 5-Star Rating */}
-                  <div className="flex items-center gap-0.5">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() =>
-                          onUpdateBook({
-                            ...selectedBook,
-                            rating: selectedBook.rating === star ? 0 : star,
-                            lastOpenedAt: new Date().toISOString(),
-                          })
-                        }
-                        aria-label={`Rate ${star} stars`}
-                        className="p-0.5"
-                      >
-                        <Star
-                          className={`h-4 w-4 ${
-                            star <= selectedBook.rating
-                              ? 'fill-[#D4A359] text-[#D4A359]'
-                              : mutedText
-                          }`}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Exact Current Page / Total Pages */}
-                <div className="grid grid-cols-3 items-center gap-2 pt-1">
-                  <div>
-                    <label className={`block text-[10px] ${mutedText}`}>
-                      {lang === 'bn' ? 'পড়া হয়েছে (পৃষ্ঠা)' : 'Current Page'}
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={selectedBook.totalPages}
-                      value={selectedBook.currentPage}
+                    <select
+                      value={selectedBook.status}
                       onChange={(e) => {
-                        const total = Math.max(1, selectedBook.totalPages);
-                        const cur = Math.max(0, Math.min(total, Number(e.target.value) || 0));
-                        const pct = Math.round((cur / total) * 100);
+                        const nextStatus = e.target.value as ReadingStatus;
+                        onUpdateBook({
+                          ...selectedBook,
+                          status: nextStatus,
+                          progress:
+                            nextStatus === 'Finished' ? 100 : selectedBook.progress,
+                          currentPage:
+                            nextStatus === 'Finished'
+                              ? selectedBook.totalPages
+                              : selectedBook.currentPage,
+                        });
+                      }}
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-medium focus:outline-none ${tk.inputSurface}`}
+                    >
+                      <option value="Want to read">{t.wantToRead}</option>
+                      <option value="Reading">{t.reading}</option>
+                      <option value="Finished">{t.finished}</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <div className={`flex items-center justify-between text-xs ${tk.mutedText}`}>
+                      <span>{lang === 'bn' ? 'পড়ার অগ্রগতি' : 'Reading Progress'}</span>
+                      <span className="font-mono-tabular">
+                        {selectedBook.currentPage} / {selectedBook.totalPages}p ({selectedBook.progress}%)
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={selectedBook.totalPages}
+                      aria-label="Current page"
+                      value={Math.max(1, selectedBook.currentPage)}
+                      onChange={(e) => {
+                        const cur = Number(e.target.value);
+                        const pct = Math.round((cur / selectedBook.totalPages) * 100);
                         onUpdateBook({
                           ...selectedBook,
                           currentPage: cur,
                           progress: pct,
-                          status:
-                            pct === 100 ? 'Finished' : cur > 0 ? 'Reading' : 'Want to read',
+                          status: pct >= 100 ? 'Finished' : cur > 1 ? 'Reading' : selectedBook.status,
                           lastOpenedAt: new Date().toISOString(),
                         });
                       }}
-                      className={`font-mono-tabular mt-0.5 w-full rounded-lg border px-2 py-1 text-xs focus:outline-none ${inputSurface}`}
+                      className="w-full accent-current"
                     />
                   </div>
-                  <div>
-                    <label className={`block text-[10px] ${mutedText}`}>
-                      {lang === 'bn' ? 'মোট পৃষ্ঠা' : 'Total Pages'}
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={selectedBook.totalPages}
-                      onChange={(e) => {
-                        const total = Math.max(1, Number(e.target.value) || 1);
-                        const cur = Math.min(total, selectedBook.currentPage);
-                        onUpdateBook({
-                          ...selectedBook,
-                          totalPages: total,
-                          currentPage: cur,
-                          progress: Math.round((cur / total) * 100),
-                          lastOpenedAt: new Date().toISOString(),
-                        });
-                      }}
-                      className={`font-mono-tabular mt-0.5 w-full rounded-lg border px-2 py-1 text-xs focus:outline-none ${inputSurface}`}
-                    />
-                  </div>
-                  <div className="pt-4 text-right">
-                    <span className={`font-mono-tabular text-xs font-semibold ${accentText}`}>
-                      {selectedBook.progress}%
+                </div>
+
+                {/* Actions including Upgraded Reader Launch */}
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenBookReader(selectedBook)}
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-semibold ${tk.primaryBtn}`}
+                  >
+                    <BookOpen className="h-3.5 w-3.5" />
+                    <span>
+                      {selectedBook.pdfFileId || selectedBook.pdfUrl
+                        ? lang === 'bn'
+                          ? 'রিডার ও PDF খুলুন'
+                          : 'Open Reader & PDF'
+                        : lang === 'bn'
+                        ? 'বুক রিডার খুলুন'
+                        : 'Open Book Reader'}
                     </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Half: PDF Attachment/Reader + Marginalia Notes */}
-            <div
-              className={`space-y-4 border-t pt-4 lg:col-span-6 lg:border-t-0 lg:border-l lg:pl-6 lg:pt-0 ${
-                isPaper ? 'border-[#D5CFC2]' : 'border-white/8'
-              }`}
-            >
-              {/* PDF Controls */}
-              <div
-                className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 ${
-                  isPaper ? 'border-[#D5CFC2] bg-[#F7F5F0]' : 'border-white/8 bg-[#121419]'
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className={`text-xs font-semibold ${headingText}`}>
-                    {lang === 'bn' ? 'পিডিএফ বই / ফাইল' : 'PDF Document'}
-                  </p>
-                  <p className={`truncate text-[11px] ${mutedText}`}>
-                    {selectedBook.pdfFileName ||
-                      selectedBook.pdfUrl ||
-                      (lang === 'bn'
-                        ? 'কোনো পিডিএফ যুক্ত করা হয়নি'
-                        : 'No local PDF or link attached')}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {(selectedBook.pdfFileId || selectedBook.pdfUrl) && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenBookPdf(selectedBook)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ${activeBtnClass}`}
-                    >
-                      <FileText className="h-3.5 w-3.5" />
-                      <span>{lang === 'bn' ? 'পিডিএফ খুলুন' : 'Open PDF'}</span>
-                    </button>
-                  )}
+                  </button>
 
                   <label
-                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${inputSurface}`}
+                    className={`inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium ${tk.inputSurface}`}
                   >
                     <Upload className="h-3.5 w-3.5" />
-                    <span>{lang === 'bn' ? 'পিডিএফ ফাইল' : 'Attach PDF'}</span>
+                    <span>
+                      {selectedBook.pdfFileName
+                        ? lang === 'bn'
+                          ? 'PDF বদলান'
+                          : 'Replace PDF'
+                        : lang === 'bn'
+                        ? 'PDF সংযুক্ত'
+                        : 'Attach PDF'}
+                    </span>
                     <input
                       type="file"
                       accept="application/pdf"
@@ -1387,47 +1245,93 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                       className="hidden"
                     />
                   </label>
+
+                  <button
+                    type="button"
+                    onClick={() => onStudyBookInTimer(selectedBook)}
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium ${tk.inputSurface}`}
+                  >
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>{lang === 'bn' ? 'টাইমারে পড়ুন' : 'Focus Timer'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (selectedBook.pdfFileId) {
+                        await deletePdfBlob(selectedBook.pdfFileId);
+                      }
+                      onDeleteBook(selectedBook.id);
+                    }}
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs text-rose-500 hover:bg-rose-500/10 ${tk.inputSurface}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
+            </div>
 
-              {/* Cloud PDF Link for Cross-Device Mobile Access */}
-              <div className="flex items-center gap-2">
-                <LinkIcon className={`h-3.5 w-3.5 shrink-0 ${mutedText}`} />
+            {/* Right: Cloud PDF URL + Favorite Pages Summary + Study Marginalia */}
+            <div
+              className={`flex flex-col justify-between space-y-3 border-t pt-4 lg:col-span-6 lg:border-t-0 lg:border-l lg:pl-6 lg:pt-0 ${tk.borderSubtle}`}
+            >
+              <div>
+                <label className={`flex items-center gap-1.5 text-xs font-medium ${tk.mutedText}`}>
+                  <LinkIcon className="h-3.5 w-3.5" />
+                  <span>
+                    {lang === 'bn'
+                      ? 'ক্লাউড PDF লিংক (মোবাইলে দেখার জন্য)'
+                      : 'Cloud PDF URL (syncs cleanly to Mobile via Cloud Sync)'}
+                  </span>
+                </label>
                 <input
                   type="url"
                   value={selectedBook.pdfUrl || ''}
                   onChange={(e) =>
-                    onUpdateBook({
-                      ...selectedBook,
-                      pdfUrl: e.target.value,
-                      lastOpenedAt: new Date().toISOString(),
-                    })
+                    onUpdateBook({ ...selectedBook, pdfUrl: e.target.value })
                   }
-                  placeholder={
-                    lang === 'bn'
-                      ? 'মোবাইল ও পিসিতে একসাথে পেতে ক্লাউড পিডিএফ লিংক (Drive/URL) দিন...'
-                      : 'Optional cloud PDF URL (Google Drive / web link for PC & Mobile sync)...'
-                  }
-                  className={`w-full rounded-lg border px-3 py-1.5 text-xs focus:outline-none ${inputSurface}`}
+                  placeholder="https://drive.google.com/... or direct PDF link"
+                  className={`mt-1 w-full rounded-lg border px-3 py-1.5 text-xs focus:outline-none ${tk.inputSurface}`}
                 />
+                {selectedBook.pdfFileName && (
+                  <p className={`mt-1 text-[11px] text-emerald-500`}>
+                    ✓ Local PDF attached: {selectedBook.pdfFileName}
+                  </p>
+                )}
               </div>
 
-              <div>
-                <div className="flex items-center justify-between">
-                  <label htmlFor="library-notes" className={`text-xs font-medium ${mutedText}`}>
-                    {lang === 'bn' ? 'বইয়ের নোট ও সারাংশ' : 'Reading Notes & Marginalia'}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => onStudyBookInTimer(selectedBook)}
-                    className={`inline-flex items-center gap-1 text-xs font-medium ${accentText} hover:underline`}
-                  >
-                    <Clock className="h-3 w-3" />
-                    <span>{lang === 'bn' ? 'টাইমারে পড়ুন' : 'Read in Timer'}</span>
-                  </button>
+              {/* Favorite Pages Quick Bar */}
+              {(selectedBook.favoritePages?.length || 0) > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className={`text-[11px] font-medium ${tk.accentText}`}>
+                    ★ Favorite Pages:
+                  </span>
+                  {selectedBook.favoritePages!.map((fav) => (
+                    <button
+                      key={fav.page}
+                      type="button"
+                      onClick={async () => {
+                        await handleOpenBookReader(selectedBook);
+                        setReaderState((prev) =>
+                          prev ? { ...prev, page: fav.page } : prev
+                        );
+                      }}
+                      className={`font-mono-tabular rounded-md border px-2 py-0.5 text-[11px] ${tk.subCardSurface}`}
+                    >
+                      p.{fav.page} {fav.label !== `Page ${fav.page}` ? `(${fav.label})` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex-1">
+                <div className={`flex items-center justify-between text-xs ${tk.mutedText}`}>
+                  <span className="font-medium">
+                    {lang === 'bn' ? 'অধ্যয়নের নোট ও সারাংশ' : 'Notes, Takeaways & Marginalia'}
+                  </span>
+                  <span>{lang === 'bn' ? 'অটো-সেভড' : 'Auto-saved'}</span>
                 </div>
                 <textarea
-                  id="library-notes"
                   rows={4}
                   value={selectedBook.notes}
                   onChange={(e) =>
@@ -1439,284 +1343,23 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                   }
                   placeholder={
                     lang === 'bn'
-                      ? 'গুরুত্বপূর্ণ অধ্যায়, উদ্ধৃতি বা সারাংশ লিখুন...'
-                      : 'Capture key quotes, chapters, or takeaways...'
+                      ? 'এই বইয়ের গুরুত্বপূর্ণ তথ্য ও উদ্ধৃতি এখানে লিখে রাখুন...'
+                      : 'Capture core quotes, takeaways, and exam derivations from this volume...'
                   }
-                  className={`mt-1.5 w-full resize-none rounded-xl border p-3 text-sm leading-relaxed focus:outline-none ${inputSurface}`}
+                  className={`mt-1.5 w-full resize-none rounded-xl border p-3 text-xs leading-relaxed focus:outline-none ${tk.inputSurface}`}
                 />
               </div>
             </div>
           </div>
         )}
-
-        {/* Serial Book Catalog Cards Below Shelf (Shows filtered Want to Read / Reading / Finished books cleanly) */}
-        {filteredBooks.length > 0 && (
-          <div className="space-y-3 pt-2">
-            <h2 className={`text-sm font-semibold ${headingText}`}>
-              {lang === 'bn'
-                ? `বইয়ের তালিকা (${filteredBooks.length})`
-                : `Shelved Catalog (${filteredBooks.length})`}
-            </h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredBooks.map((book) => {
-                const isSelected = selectedBook?.id === book.id;
-                return (
-                  <button
-                    key={book.id}
-                    type="button"
-                    onClick={() => setSelectedBookId(book.id)}
-                    className={`flex items-start gap-3.5 rounded-xl border p-3.5 text-left transition-all ${
-                      isSelected
-                        ? isPaper
-                          ? 'border-[#1D355E] bg-[#F5F3EE] ring-1 ring-[#1D355E]'
-                          : 'border-[#D4A359] bg-[#1E2129]'
-                        : `${cardSurface} hover:border-[#D4A359]/50`
-                    }`}
-                  >
-                    {/* Mini Cover */}
-                    <div
-                      className="relative h-16 w-12 shrink-0 overflow-hidden rounded-r-md rounded-l-xs shadow"
-                      style={
-                        book.coverImage
-                          ? {
-                              backgroundImage: `url(${book.coverImage})`,
-                              backgroundSize: 'cover',
-                              backgroundPosition: 'center',
-                            }
-                          : { backgroundColor: book.coverColor }
-                      }
-                    >
-                      {!book.coverImage && (
-                        <span
-                          className="absolute inset-y-0 left-0 w-1.5"
-                          style={{ backgroundColor: book.spineAccent }}
-                        />
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <p className={`truncate font-display text-sm font-semibold ${headingText}`}>
-                        {book.title}
-                      </p>
-                      <p className={`truncate text-xs ${mutedText}`}>
-                        {book.author || (lang === 'bn' ? 'লেখক যোগ করুন (ক্লিক)' : 'Click to add author')}
-                      </p>
-                      <div className={`mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] ${mutedText}`}>
-                        <span className={accentText}>{book.genre}</span>
-                        <span>·</span>
-                        <span className="truncate">{book.topic}</span>
-                      </div>
-                      <div className={`mt-1.5 flex items-center justify-between text-[11px] ${mutedText}`}>
-                        <span className="text-[#D4A359]">
-                          {'★'.repeat(book.rating)}
-                          {'☆'.repeat(5 - book.rating)}
-                        </span>
-                        <span className="font-mono-tabular">
-                          {book.currentPage}/{book.totalPages}p · {book.status}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </section>
 
-      {/* Ambient Focus Music Player & Wallpaper Studio */}
-      <section
-        className={`grid grid-cols-1 gap-8 border-t pt-10 lg:grid-cols-12 ${
-          isPaper ? 'border-[#D5CFC2]' : 'border-white/8'
-        }`}
-      >
-        <div className={`space-y-5 rounded-2xl border p-6 lg:col-span-6 ${cardSurface}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <Music2 className={`h-4 w-4 ${accentText}`} />
-              <div>
-                <h2 className={`text-base font-medium ${headingText}`}>{t.ambientTitle}</h2>
-                <p className={`text-xs ${mutedText}`}>{t.ambientDesc}</p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onToggleMusic}
-              className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-xs font-semibold transition-colors ${
-                isMusicPlaying ? activeBtnClass : inputSurface
-              }`}
-            >
-              {isMusicPlaying ? (
-                <>
-                  <Pause className="h-3.5 w-3.5" />
-                  <span>{lang === 'bn' ? 'বিরতি' : 'Pause'}</span>
-                </>
-              ) : (
-                <>
-                  <Play className="h-3.5 w-3.5" />
-                  <span>{lang === 'bn' ? 'চালু করুন' : 'Play Focus Audio'}</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          <div
-            className={`divide-y rounded-xl border ${
-              isPaper
-                ? 'divide-[#D5CFC2] border-[#D5CFC2] bg-[#FAF9F6]'
-                : 'divide-white/8 border-white/8 bg-[#111215]'
-            }`}
-          >
-            {AMBIENT_TRACKS.map((track) => {
-              const isSelected = activeTrackId === track.id;
-              return (
-                <button
-                  key={track.id}
-                  type="button"
-                  onClick={() => onSelectTrack(track.id)}
-                  className={`flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors ${
-                    isSelected
-                      ? isPaper
-                        ? 'bg-[#EFECE4]'
-                        : 'bg-[#1C1F27]'
-                      : 'hover:bg-black/[0.03]'
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <p className={`text-sm font-medium ${isSelected ? accentText : headingText}`}>
-                      {track.title}
-                    </p>
-                    <p className={`truncate text-xs ${mutedText}`}>{track.subtitle}</p>
-                  </div>
-                  <span className={`font-mono-tabular shrink-0 text-[11px] ${mutedText}`}>
-                    {isSelected && isMusicPlaying
-                      ? lang === 'bn'
-                        ? 'চলছে'
-                        : 'Playing'
-                      : track.durationLabel}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center gap-4 pt-1">
-            <Volume2 className={`h-4 w-4 shrink-0 ${mutedText}`} />
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              aria-label="Ambient volume"
-              value={musicVolume}
-              onChange={(e) => onChangeVolume(Number(e.target.value))}
-              className="w-full accent-[#D4A359]"
-            />
-            <span className={`font-mono-tabular w-12 text-right text-xs ${mutedText}`}>
-              {Math.round(musicVolume * 100)}%
-            </span>
-          </div>
-          <p className={`text-xs ${mutedText}`}>
-            {lang === 'bn' ? 'বর্তমান ট্র্যাক:' : 'Active channel:'}{' '}
-            <span className={headingText}>{activeTrack.title}</span>
-          </p>
-        </div>
-
-        <div className={`space-y-5 rounded-2xl border p-6 lg:col-span-6 ${cardSurface}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <ImageIcon className={`h-4 w-4 ${accentText}`} />
-              <div>
-                <h2 className={`text-base font-medium ${headingText}`}>{t.wallpaperTitle}</h2>
-                <p className={`text-xs ${mutedText}`}>{t.wallpaperDesc}</p>
-              </div>
-            </div>
-
-            <label
-              className={`inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${inputSurface}`}
-            >
-              <Upload className="h-3.5 w-3.5" />
-              <span>{t.uploadPhoto}</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoUpload}
-                className="hidden"
-              />
-            </label>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {allWallpapers.map((preset) => {
-              const selected = activeWallpaperId === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => onSelectWallpaper(preset.id)}
-                  className={`group overflow-hidden rounded-xl border text-left transition-all ${
-                    selected
-                      ? 'border-[#D4A359] ring-1 ring-[#D4A359]/60'
-                      : isPaper
-                      ? 'border-[#D5CFC2]'
-                      : 'border-white/10 hover:border-white/30'
-                  }`}
-                >
-                  <div
-                    className="h-20 w-full transition-transform duration-300 group-hover:scale-105"
-                    style={
-                      preset.type === 'image'
-                        ? {
-                            backgroundImage: `url(${preset.value})`,
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center',
-                          }
-                        : { background: preset.value }
-                    }
-                  />
-                  <div className={isPaper ? 'bg-[#FAF9F6] px-2.5 py-2' : 'bg-[#111215] px-2.5 py-2'}>
-                    <p className={`truncate text-xs font-medium ${headingText}`}>
-                      {lang === 'bn' ? preset.nameBn : preset.name}
-                    </p>
-                    <p className={`text-[10px] ${mutedText}`}>{preset.category}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <div
-            className={`space-y-2 border-t pt-4 ${
-              isPaper ? 'border-[#D5CFC2]' : 'border-white/8'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs">
-              <span className={mutedText}>
-                {lang === 'bn' ? 'ব্যাকগ্রাউন্ড ডার্কনেস (মিডনাইট মোড)' : 'Midnight Scrim Opacity'}
-              </span>
-              <span className="font-mono-tabular">{Math.round(backdropDimming * 100)}%</span>
-            </div>
-            <input
-              type="range"
-              min={0.35}
-              max={0.95}
-              step={0.05}
-              aria-label="Backdrop darkness"
-              value={backdropDimming}
-              onChange={(e) => onChangeBackdropDimming(Number(e.target.value))}
-              className="w-full accent-[#D4A359]"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Add Book Modal */}
+      {/* ==================== ADD BOOK MODAL ==================== */}
       {showAddBookModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
           <form
             onSubmit={handleCreateBook}
-            className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl border border-white/10 bg-[#181A1F] p-6 text-[#F4F2ED] shadow-2xl"
+            className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl border border-white/15 bg-[#161618] p-6 text-white shadow-2xl"
           >
             <div className="flex items-center justify-between">
               <h2 className="font-display text-xl font-medium">
@@ -1725,7 +1368,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
               <button
                 type="button"
                 onClick={() => setShowAddBookModal(false)}
-                className="text-xs text-[#8D93A1] hover:text-white"
+                className="text-xs text-zinc-400 hover:text-white"
               >
                 {lang === 'bn' ? 'বাতিল' : 'Cancel'}
               </button>
@@ -1733,7 +1376,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-medium text-[#B5BAC6]">
+                <label className="block text-xs font-medium text-zinc-300">
                   {lang === 'bn' ? 'বইয়ের নাম *' : 'Book Title *'}
                 </label>
                 <input
@@ -1742,32 +1385,32 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="e.g., History of the Ottomans"
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-[#111215] px-3 py-2 text-sm text-white focus:border-[#D4A359] focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-[#0B0B0D] px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#B5BAC6]">
-                  {lang === 'bn' ? 'লেখক (খালি রাখতে পারেন)' : 'Author (optional, editable later)'}
+                <label className="block text-xs font-medium text-zinc-300">
+                  {lang === 'bn' ? 'লেখক (ঐচ্ছিক)' : 'Author (optional)'}
                 </label>
                 <input
                   type="text"
                   value={newAuthor}
                   onChange={(e) => setNewAuthor(e.target.value)}
                   placeholder="Optional"
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-[#111215] px-3 py-2 text-sm text-white focus:border-[#D4A359] focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-[#0B0B0D] px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-medium text-[#B5BAC6]">
+                <label className="block text-xs font-medium text-zinc-300">
                   {lang === 'bn' ? 'জনরা' : 'Genre'}
                 </label>
                 <select
                   value={newGenre}
                   onChange={(e) => setNewGenre(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-[#111215] px-3 py-2 text-sm text-white focus:border-[#D4A359] focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-[#0B0B0D] px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
                 >
                   {genres.map((g) => (
                     <option key={g} value={g}>
@@ -1777,28 +1420,28 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#B5BAC6]">
-                  {lang === 'bn' ? 'টপিক / টাইপ (যেমন: Ottoman Empire)' : 'Topic / Type (e.g., WWII, Islamic War)'}
+                <label className="block text-xs font-medium text-zinc-300">
+                  {lang === 'bn' ? 'টপিক / টাইপ' : 'Topic / Type (e.g., WWII, Islamic War)'}
                 </label>
                 <input
                   type="text"
                   value={newTopic}
                   onChange={(e) => setNewTopic(e.target.value)}
-                  placeholder="e.g., Ottoman Empire, World War II"
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-[#111215] px-3 py-2 text-sm text-white focus:border-[#D4A359] focus:outline-none"
+                  placeholder="e.g., Ottoman Empire, WWII"
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-[#0B0B0D] px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-[#B5BAC6]">
+                <label className="block text-xs font-medium text-zinc-300">
                   {lang === 'bn' ? 'অবস্থা' : 'Status'}
                 </label>
                 <select
                   value={newStatus}
                   onChange={(e) => setNewStatus(e.target.value as ReadingStatus)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-[#111215] px-2.5 py-2 text-xs text-white focus:border-[#D4A359] focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-[#0B0B0D] px-2.5 py-2 text-xs text-white focus:outline-none"
                 >
                   <option value="Want to read">{t.wantToRead}</option>
                   <option value="Reading">{t.reading}</option>
@@ -1806,7 +1449,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#B5BAC6]">
+                <label className="block text-xs font-medium text-zinc-300">
                   {lang === 'bn' ? 'মোট পৃষ্ঠা' : 'Total Pages'}
                 </label>
                 <input
@@ -1814,11 +1457,11 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                   min={1}
                   value={newPages}
                   onChange={(e) => setNewPages(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-[#111215] px-2.5 py-2 text-xs text-white focus:border-[#D4A359] focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-[#0B0B0D] px-2.5 py-2 text-xs text-white focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#B5BAC6]">
+                <label className="block text-xs font-medium text-zinc-300">
                   {lang === 'bn' ? 'রেটিং' : 'Rating'}
                 </label>
                 <div className="mt-2 flex items-center gap-0.5">
@@ -1830,7 +1473,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                     >
                       <Star
                         className={`h-4 w-4 ${
-                          s <= newRating ? 'fill-[#D4A359] text-[#D4A359]' : 'text-[#5F6573]'
+                          s <= newRating ? 'fill-amber-400 text-amber-400' : 'text-zinc-600'
                         }`}
                       />
                     </button>
@@ -1839,10 +1482,9 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
               </div>
             </div>
 
-            {/* Cover Image + PDF Upload / Link */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 bg-[#111215] px-3 py-2.5 text-xs text-[#D1D5DB] hover:border-[#D4A359]">
-                <ImageIcon className="h-4 w-4 text-[#D4A359]" />
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/25 bg-[#0B0B0D] px-3 py-2.5 text-xs text-zinc-200 hover:border-white">
+                <ImageIcon className="h-4 w-4" />
                 <span>{newCoverImage ? 'Cover Photo Ready ✓' : 'Upload Cover Image'}</span>
                 <input
                   type="file"
@@ -1852,8 +1494,8 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
                 />
               </label>
 
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 bg-[#111215] px-3 py-2.5 text-xs text-[#D1D5DB] hover:border-[#D4A359]">
-                <FileText className="h-4 w-4 text-[#D4A359]" />
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/25 bg-[#0B0B0D] px-3 py-2.5 text-xs text-zinc-200 hover:border-white">
+                <FileText className="h-4 w-4" />
                 <span className="truncate">{newPdfFile ? newPdfFile.name : 'Attach Local PDF'}</span>
                 <input
                   type="file"
@@ -1865,21 +1507,21 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-[#B5BAC6]">
-                {lang === 'bn' ? 'ক্লাউড পিডিএফ লিংক (ঐচ্ছিক)' : 'Cloud PDF Link (optional, syncs to mobile)'}
+              <label className="block text-xs font-medium text-zinc-300">
+                {lang === 'bn' ? 'ক্লাউড PDF লিংক (মোবাইল সিঙ্কের জন্য)' : 'Cloud PDF Link (optional, syncs to Mobile)'}
               </label>
               <input
                 type="url"
                 value={newPdfUrl}
                 onChange={(e) => setNewPdfUrl(e.target.value)}
                 placeholder="https://drive.google.com/..."
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#111215] px-3 py-2 text-xs text-white focus:border-[#D4A359] focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-white/15 bg-[#0B0B0D] px-3 py-2 text-xs text-white focus:outline-none"
               />
             </div>
 
             <div>
-              <span className="block text-xs font-medium text-[#B5BAC6]">
-                {lang === 'bn' ? 'স্পাইনের রঙ' : 'Spine Color'}
+              <span className="block text-xs font-medium text-zinc-300">
+                {lang === 'bn' ? 'স্পাইনের রঙ' : 'Spine Binding Color'}
               </span>
               <div className="mt-2 flex items-center gap-2.5">
                 {BOOK_BINDINGS.map((b, i) => (
@@ -1903,7 +1545,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
 
             <button
               type="submit"
-              className="w-full rounded-lg bg-[#D4A359] px-4 py-2.5 text-sm font-semibold text-[#111215] hover:bg-[#DFB26D]"
+              className="w-full rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-black hover:bg-zinc-200"
             >
               {lang === 'bn' ? 'শেল্ফে যোগ করুন' : 'Shelve Book'}
             </button>
@@ -1911,12 +1553,12 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
         </div>
       )}
 
-      {/* Smart Bulk Add Modal */}
+      {/* ==================== BULK ADD MODAL ==================== */}
       {showBulkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
           <form
             onSubmit={handleBulkSubmit}
-            className="w-full max-w-2xl space-y-4 rounded-2xl border border-white/10 bg-[#181A1F] p-6 text-[#F4F2ED] shadow-2xl"
+            className="w-full max-w-2xl space-y-4 rounded-2xl border border-white/15 bg-[#161618] p-6 text-white shadow-2xl"
           >
             <div className="flex items-center justify-between">
               <h2 className="font-display text-xl font-medium">
@@ -1925,24 +1567,24 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
               <button
                 type="button"
                 onClick={() => setShowBulkModal(false)}
-                className="text-xs text-[#8D93A1] hover:text-white"
+                className="text-xs text-zinc-400 hover:text-white"
               >
                 {lang === 'bn' ? 'বাতিল' : 'Cancel'}
               </button>
             </div>
-            <p className="text-xs leading-relaxed text-[#9CA3AF]">
+            <p className="text-xs leading-relaxed text-zinc-400">
               {lang === 'bn'
-                ? 'আপনার ফরম্যাটেই পেস্ট করুন (যেমন: 1. The Puppet Show — M. W. Craven - Crime Thriller - Serial Killer Investigation & Suspense) অথবা Title | Author | Genre | Topic ফরম্যাটে দিন:'
-                : 'Paste lines in either "Title — Author - Genre - Topic" (numbered or plain) or "Title | Author | Genre | Topic". New genres & topics are organized automatically:'}
+                ? 'Title — Author - Genre - Topic অথবা Title | Author | Genre | Topic ফরম্যাটে পেস্ট করুন:'
+                : 'Paste lines in either "Title — Author - Genre - Topic" or "Title | Author | Genre | Topic". Genres & topics organize automatically:'}
             </p>
             <textarea
               rows={8}
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder={`Amazonia — James Rollins - Action Thriller / Adventure - Amazon Rainforest Mystery & Survival\n1. The Puppet Show — M. W. Craven - Crime Thriller - Serial Killer Investigation & Suspense\n2. The House Where I Died Once — Keigo Higashino - Psychological Mystery - Trauma, Memory & House Secrets`}
-              className="w-full rounded-xl border border-white/10 bg-[#111215] p-3.5 font-mono text-xs text-white focus:border-[#D4A359] focus:outline-none"
+              placeholder={`Amazonia — James Rollins - Action Thriller - Amazon Mystery\n1. The Puppet Show — M. W. Craven - Crime Thriller - Investigation`}
+              className="w-full rounded-xl border border-white/15 bg-[#0B0B0D] p-3.5 font-mono text-xs text-white focus:outline-none"
             />
-            <div className="flex items-center justify-between text-xs text-[#9CA3AF]">
+            <div className="flex items-center justify-between text-xs text-zinc-400">
               <span>
                 {lang === 'bn'
                   ? `শনাক্তকৃত বই: ${bulkPreview}টি`
@@ -1951,7 +1593,7 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
               <button
                 type="submit"
                 disabled={bulkPreview === 0}
-                className="rounded-lg bg-[#D4A359] px-5 py-2 font-semibold text-[#111215] hover:bg-[#DFB26D] disabled:opacity-50"
+                className="rounded-lg bg-white px-5 py-2 font-semibold text-black hover:bg-zinc-200 disabled:opacity-50"
               >
                 {lang === 'bn' ? 'সবগুলো যোগ করুন' : 'Shelve All Books'}
               </button>
@@ -1960,29 +1602,222 @@ export const LibraryFocusModule: React.FC<LibraryFocusModuleProps> = ({
         </div>
       )}
 
-      {/* Built-In In-App PDF Viewer Modal */}
-      {activePdfModal && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/85 p-3 backdrop-blur-sm sm:p-6">
-          <div className="mx-auto flex w-full max-w-5xl items-center justify-between rounded-t-2xl border border-white/10 bg-[#181A1F] px-5 py-3 text-white">
-            <div className="flex items-center gap-2.5">
-              <FileText className="h-4 w-4 text-[#D4A359]" />
-              <h3 className="font-display text-base font-medium">{activePdfModal.title}</h3>
+      {/* ==================== UPGRADED IN-APP READER MODAL (3D FLIP + ZOOM + FAVORITE PAGES) ==================== */}
+      {readerState && readerBook && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/90 p-3 backdrop-blur-md sm:p-5">
+          {/* Reader Top Controls */}
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-t-2xl border border-white/15 bg-[#161618] px-4 py-3 text-white">
+            <div className="flex items-center gap-3 min-w-0">
+              <BookOpen className="h-4 w-4 shrink-0 text-white" />
+              <div className="min-w-0">
+                <h3 className="truncate font-display text-sm font-medium sm:text-base">
+                  {readerBook.title}
+                </h3>
+                <p className="font-mono-tabular text-[11px] text-zinc-400">
+                  Page {readerState.page} of {readerBook.totalPages}
+                </p>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={handleClosePdfModal}
-              className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
-            >
-              <X className="h-3.5 w-3.5" />
-              <span>{lang === 'bn' ? 'বন্ধ করুন' : 'Close Reader'}</span>
-            </button>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Page Flip Navigation */}
+              <div className="flex items-center rounded-lg border border-white/15 bg-[#0B0B0D]">
+                <button
+                  type="button"
+                  onClick={() => handleReaderPageChange(readerState.page - 1)}
+                  disabled={readerState.page <= 1}
+                  className="p-1.5 hover:bg-white/10 disabled:opacity-35"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={readerBook.totalPages}
+                  value={readerState.page}
+                  onChange={(e) => handleReaderPageChange(Number(e.target.value) || 1)}
+                  aria-label="Jump to page number"
+                  className="font-mono-tabular w-12 bg-transparent text-center text-xs focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleReaderPageChange(readerState.page + 1)}
+                  disabled={readerState.page >= readerBook.totalPages}
+                  className="p-1.5 hover:bg-white/10 disabled:opacity-35"
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Zoom Controls (50% - 250%) */}
+              <div className="flex items-center rounded-lg border border-white/15 bg-[#0B0B0D]">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReaderState((s) =>
+                      s ? { ...s, zoomPercent: Math.max(50, s.zoomPercent - 15) } : s
+                    )
+                  }
+                  className="p-1.5 hover:bg-white/10"
+                  aria-label="Zoom out"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <span className="font-mono-tabular px-2 text-xs">{readerState.zoomPercent}%</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReaderState((s) =>
+                      s ? { ...s, zoomPercent: Math.min(250, s.zoomPercent + 15) } : s
+                    )
+                  }
+                  className="p-1.5 hover:bg-white/10"
+                  aria-label="Zoom in"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {/* Favorite Current Page */}
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={favLabelInput}
+                  onChange={(e) => setFavLabelInput(e.target.value)}
+                  placeholder="Bookmark label..."
+                  className="hidden sm:block w-32 rounded-lg border border-white/15 bg-[#0B0B0D] px-2.5 py-1.5 text-xs text-white focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleToggleFavoritePage}
+                  className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                    readerBook.favoritePages?.some((f) => f.page === readerState.page)
+                      ? 'bg-amber-400 text-black'
+                      : 'border border-white/15 bg-[#0B0B0D] text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Bookmark className="h-3.5 w-3.5" />
+                  <span>
+                    {readerBook.favoritePages?.some((f) => f.page === readerState.page)
+                      ? 'Favorited'
+                      : 'Favorite Page'}
+                  </span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCloseReader}
+                className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-zinc-200"
+              >
+                <X className="h-3.5 w-3.5" />
+                <span>Close</span>
+              </button>
+            </div>
           </div>
-          <div className="mx-auto w-full max-w-5xl flex-1 overflow-hidden rounded-b-2xl border-x border-b border-white/10 bg-white">
-            <iframe
-              src={activePdfModal.url}
-              title={activePdfModal.title}
-              className="h-full w-full"
-            />
+
+          {/* Reader Body: Sidebar Favorite Pages + 3D Flipping PDF / Study Canvas */}
+          <div className="mx-auto flex w-full max-w-6xl flex-1 overflow-hidden rounded-b-2xl border-x border-b border-white/15 bg-[#121215]">
+            {/* Favorite Pages Bookmarks Drawer */}
+            <aside className="hidden w-56 shrink-0 flex-col border-r border-white/10 bg-[#141418] p-4 text-white md:flex">
+              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                <Star className="h-3.5 w-3.5 text-amber-400" />
+                <span>Favorite Pages ({readerBook.favoritePages?.length || 0})</span>
+              </p>
+              <div className="mt-3 flex-1 space-y-1.5 overflow-y-auto">
+                {(!readerBook.favoritePages || readerBook.favoritePages.length === 0) ? (
+                  <p className="text-[11px] leading-relaxed text-zinc-500">
+                    Click &ldquo;Favorite Page&rdquo; above to pin key pages or exam formulas.
+                  </p>
+                ) : (
+                  readerBook.favoritePages.map((fav) => (
+                    <div
+                      key={fav.page}
+                      className={`flex items-center justify-between gap-1 rounded-lg border px-2.5 py-2 text-xs ${
+                        readerState.page === fav.page
+                          ? 'border-white bg-white/15 text-white'
+                          : 'border-white/10 bg-[#0B0B0D] text-zinc-300'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleReaderPageChange(fav.page)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <span className="font-mono-tabular font-semibold text-amber-400">
+                          p.{fav.page}
+                        </span>
+                        <span className="block truncate text-[11px]">{fav.label}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateBook({
+                            ...readerBook,
+                            favoritePages: (readerBook.favoritePages || []).filter(
+                              (f) => f.page !== fav.page
+                            ),
+                          })
+                        }
+                        className="text-zinc-500 hover:text-rose-400"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </aside>
+
+            {/* 3D Animated Page Surface */}
+            <div className="book-perspective flex-1 overflow-auto bg-[#0D0D10] p-4">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={`${readerBook.id}-p${readerState.page}`}
+                  initial={{ opacity: 0, rotateY: readerState.flipDir * 14 }}
+                  animate={{ opacity: 1, rotateY: 0 }}
+                  exit={{ opacity: 0, rotateY: readerState.flipDir * -14 }}
+                  transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  style={{
+                    transform: `scale(${readerState.zoomPercent / 100})`,
+                    transformOrigin: 'top center',
+                    transformStyle: 'preserve-3d',
+                  }}
+                  className="mx-auto h-full min-h-[540px] w-full max-w-4xl overflow-hidden rounded-xl bg-white text-black shadow-2xl"
+                >
+                  {readerState.pdfUrl ? (
+                    <iframe
+                      src={`${readerState.pdfUrl}#page=${readerState.page}&zoom=${readerState.zoomPercent}`}
+                      title={readerBook.title}
+                      className="h-full min-h-[600px] w-full"
+                    />
+                  ) : (
+                    <div className="flex h-full min-h-[540px] flex-col justify-between p-8 sm:p-12">
+                      <div className="flex items-center justify-between border-b border-black/10 pb-3 text-xs text-zinc-500">
+                        <span>{readerBook.title}</span>
+                        <span className="font-mono-tabular">
+                          Page {readerState.page} / {readerBook.totalPages}
+                        </span>
+                      </div>
+                      <div className="my-6 flex-1 space-y-4">
+                        <h4 className="font-display text-xl font-medium">
+                          Reading Companion · {readerBook.genre} ({readerBook.topic})
+                        </h4>
+                        <p className="text-sm leading-relaxed text-zinc-700 whitespace-pre-wrap">
+                          {readerBook.notes ||
+                            'Attach a local PDF or paste a Cloud PDF URL in the book details to view full pages here. Use the notes panel or bookmark Favorite Pages anytime.'}
+                        </p>
+                      </div>
+                      <div className="border-t border-black/10 pt-3 text-center text-[11px] text-zinc-400">
+                        Archive Reader · Made by Al Tahjib Noor Raiyan
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </div>
         </div>
       )}

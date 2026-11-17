@@ -1,13 +1,30 @@
 export type Language = 'en' | 'bn';
-export type AppTheme = 'midnight' | 'paper';
 
-export type NavModule = 'methods' | 'timer' | 'journal' | 'library';
+export type AppTheme =
+  | 'mono-light'
+  | 'mono-dark'
+  | 'paper'
+  | 'midnight'
+  | 'slate'
+  | 'sepia';
+
+export type NavModule =
+  | 'methods'
+  | 'timer'
+  | 'journal'
+  | 'library'
+  | 'lab'
+  | 'grammar'
+  | 'wallpaper'
+  | 'music';
 
 export type MethodTradition =
   | 'Korean Focus'
   | 'Japanese Kaizen'
   | 'Chinese Intensive'
-  | 'Ivy League Recall';
+  | 'Ivy League Recall'
+  | 'European & Classical'
+  | 'Global STEM & Synthesis';
 
 export interface StudyTip {
   id: string;
@@ -118,6 +135,34 @@ export type DiaryMoodCategory =
   | 'Best Day of My Life'
   | 'Worst Day of My Life';
 
+export interface JournalStickyNote {
+  id: string;
+  text: string;
+  color: string;
+  textColor: string;
+  x: number; // percentage 0..85
+  y: number; // percentage 0..80
+}
+
+export interface JournalStickerItem {
+  id: string;
+  stickerId: string;
+  label: string;
+  glyph: string;
+  x: number; // percentage 0..85
+  y: number; // percentage 0..80
+  scale: number; // 0.6 .. 2.0
+}
+
+export interface JournalImageItem {
+  id: string;
+  dataUrl: string;
+  caption?: string;
+  x: number;
+  y: number;
+  widthPx: number;
+}
+
 export interface JournalSpread {
   id: string;
   leftDate: string;
@@ -127,6 +172,9 @@ export interface JournalSpread {
   rightTime?: string;
   rightContent: string;
   moodTag?: DiaryMoodCategory | string;
+  stickyNotes?: JournalStickyNote[];
+  stickers?: JournalStickerItem[];
+  images?: JournalImageItem[];
 }
 
 export interface JournalBook {
@@ -144,25 +192,32 @@ export interface JournalBook {
 
 export type ReadingStatus = 'Want to read' | 'Reading' | 'Finished';
 
+export interface FavoritePageBookmark {
+  page: number;
+  label: string;
+  savedAt: string;
+}
+
 export interface LibraryBook {
   id: string;
   title: string;
   author: string;
   genre: string;
-  topic: string; // Sub-topic / Type inside the genre (e.g., Ottoman Empire, WWII, Islamic War)
+  topic: string;
   status: ReadingStatus;
-  rating: number; // 0 to 5
+  rating: number;
   coverColor: string;
   spineAccent: string;
   textColor: string;
-  coverImage?: string; // Optional uploaded cover photo
-  pdfFileId?: string; // IndexedDB PDF reference
+  coverImage?: string;
+  pdfFileId?: string;
   pdfFileName?: string;
-  pdfUrl?: string; // Optional external/cloud PDF link for cross-device sync
+  pdfUrl?: string;
   currentPage: number;
   totalPages: number;
   progress: number;
   notes: string;
+  favoritePages?: FavoritePageBookmark[];
   createdAt: string;
   lastOpenedAt: string;
 }
@@ -174,4 +229,21 @@ export interface WallpaperPreset {
   type: 'image' | 'solid' | 'gradient';
   value: string;
   category: string;
+}
+
+export interface CustomAudioTrack {
+  id: string;
+  title: string;
+  fileName: string;
+  sizeBytes: number;
+  addedAt: string;
+}
+
+export interface SavedVideoLink {
+  id: string;
+  title: string;
+  subject: string;
+  url: string;
+  videoId: string;
+  addedAt: string;
 }

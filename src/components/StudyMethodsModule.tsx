@@ -6,6 +6,7 @@ import {
   Clock,
   Copy,
   Layers,
+  ListChecks,
   Plus,
   Trash2,
   Wand2,
@@ -27,6 +28,7 @@ import {
   StudyMethod,
   SubjectAllocation,
 } from '../types';
+import { getThemeTokens } from '../utils/themeStyles';
 
 interface StudyMethodsModuleProps {
   lang: Language;
@@ -43,11 +45,13 @@ interface StudyMethodsModuleProps {
 }
 
 const TRADITION_FILTERS: Array<{ id: 'All' | MethodTradition; en: string; bn: string }> = [
-  { id: 'All', en: 'All Frameworks', bn: 'সব মেথড' },
-  { id: 'Korean Focus', en: 'Korean Focus', bn: 'কোরিয়ান ফোকাস' },
-  { id: 'Japanese Kaizen', en: 'Japanese Kaizen', bn: 'জাপানিজ কাইজেন' },
-  { id: 'Chinese Intensive', en: 'Chinese Intensive', bn: 'চাইনিজ ইনটেনসিভ' },
-  { id: 'Ivy League Recall', en: 'Ivy League Recall', bn: 'আইভি লিগ রিকল' },
+  { id: 'All', en: 'All 12 Worldwide', bn: 'সব ১২টি মেথড' },
+  { id: 'Korean Focus', en: 'Korean', bn: 'কোরিয়ান' },
+  { id: 'Japanese Kaizen', en: 'Japanese', bn: 'জাপানিজ' },
+  { id: 'Chinese Intensive', en: 'Chinese', bn: 'চাইনিজ' },
+  { id: 'Ivy League Recall', en: 'Ivy League (US/UK)', bn: 'আইভি লিগ' },
+  { id: 'European & Classical', en: 'European', bn: 'ইউরোপীয়' },
+  { id: 'Global STEM & Synthesis', en: 'STEM & Global', bn: 'স্টেম ও গ্লোবাল' },
 ];
 
 export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
@@ -59,10 +63,11 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
   onDeleteRoutine,
 }) => {
   const t = UI_TEXT[lang];
-  const isPaper = theme === 'paper';
+  const tk = getThemeTokens(theme);
 
   const [traditionFilter, setTraditionFilter] = useState<'All' | MethodTradition>('All');
   const [tipsFilter, setTipsFilter] = useState<'All' | MethodTradition>('All');
+  const [tipsStruggleFilter, setTipsStruggleFilter] = useState<string>('All');
   const [selectedMethod, setSelectedMethod] = useState<StudyMethod>(GLOBAL_STUDY_METHODS[0]);
 
   // Routine Builder State
@@ -89,10 +94,12 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
       ? GLOBAL_STUDY_METHODS
       : GLOBAL_STUDY_METHODS.filter((m) => m.tradition === traditionFilter);
 
-  const filteredTips =
-    tipsFilter === 'All'
-      ? GLOBAL_STUDY_TIPS
-      : GLOBAL_STUDY_TIPS.filter((tip) => tip.tradition === tipsFilter);
+  const filteredTips = GLOBAL_STUDY_TIPS.filter((tip) => {
+    const matchesTradition = tipsFilter === 'All' || tip.tradition === tipsFilter;
+    const matchesStruggle =
+      tipsStruggleFilter === 'All' || tip.solvesStruggles.includes(tipsStruggleFilter);
+    return matchesTradition && matchesStruggle;
+  });
 
   const handleAddAllocation = () => {
     setAllocations((prev) => [
@@ -106,10 +113,7 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
     ]);
   };
 
-  const handleUpdateAllocation = (
-    id: string,
-    patch: Partial<SubjectAllocation>
-  ) => {
+  const handleUpdateAllocation = (id: string, patch: Partial<SubjectAllocation>) => {
     setAllocations((prev) =>
       prev.map((a) => (a.id === id ? { ...a, ...patch } : a))
     );
@@ -186,166 +190,142 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
     window.setTimeout(() => setCopiedBanner(false), 2500);
   };
 
-  const cardSurface = isPaper
-    ? 'border-[#C6BEB0] bg-[#EFECE5] text-[#211E19]'
-    : 'border-white/8 bg-[#16181D] text-[#F4F2ED]';
-  const inputSurface = isPaper
-    ? 'border-[#C6BEB0] bg-white text-[#211E19] placeholder:text-[#888072]'
-    : 'border-white/10 bg-[#111215] text-[#F4F2ED] placeholder:text-[#5F6573]';
-  const mutedText = isPaper ? 'text-[#665E52]' : 'text-[#9CA3AF]';
-  const headingText = isPaper ? 'text-[#1F1C18]' : 'text-[#F4F2ED]';
-  const accentText = isPaper ? 'text-[#8D5B16]' : 'text-[#D4A359]';
-
   return (
     <div className="space-y-12">
       {/* Masthead */}
-      <section
-        className={`border-b pb-6 ${isPaper ? 'border-[#C6BEB0]' : 'border-white/8'}`}
-      >
+      <section className={`border-b pb-6 ${tk.borderSubtle}`}>
         <div className="max-w-3xl">
-          <p className={`text-xs font-medium tracking-wide ${accentText}`}>
+          <p className={`text-xs font-medium tracking-wide ${tk.accentText}`}>
             {t.brand} · {t.subtitle}
           </p>
           <h1
-            className={`mt-2 text-3xl font-medium tracking-tight sm:text-4xl [text-wrap:balance] ${headingText}`}
+            className={`mt-2 text-3xl font-medium tracking-tight sm:text-4xl [text-wrap:balance] ${tk.headingText}`}
           >
             {t.methodsTitle}
           </h1>
-          <p className={`mt-2.5 text-sm leading-relaxed ${mutedText}`}>
+          <p className={`mt-2.5 text-sm leading-relaxed ${tk.mutedText}`}>
             {t.methodsDesc}
           </p>
         </div>
       </section>
 
-      {/* 01. Prominent Automated Subject & Struggle Routine Builder */}
+      {/* 01. Clean Routine Builder + Side-by-Side Execution Guide */}
       <section className="space-y-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className={`text-xl font-medium ${headingText}`}>
+            <h2 className={`text-xl font-medium ${tk.headingText}`}>
               {lang === 'bn'
-                ? '০১. সাবজেক্ট ও সমস্যা অনুযায়ী স্মার্ট রুটিন বিল্ডার'
-                : '01. Automated Subject & Struggle Routine Builder'}
+                ? '০১. সাবজেক্ট ও সমস্যা অনুযায়ী রুটিন বিল্ডার এবং নির্দেশিকা'
+                : '01. Automated Routine Builder & Execution Timetable'}
             </h2>
-            <p className={`mt-1 text-sm ${mutedText}`}>{t.routineBuilderDesc}</p>
+            <p className={`mt-1 text-sm ${tk.mutedText}`}>{t.routineBuilderDesc}</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-          {/* Input Form */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Left Side: Builder Form (5 cols) */}
           <form
             onSubmit={handleBuildRoutine}
-            className={`space-y-5 rounded-2xl border p-6 lg:col-span-5 ${cardSurface}`}
+            className={`space-y-5 rounded-2xl border p-6 lg:col-span-5 ${tk.cardSurface}`}
           >
-            {/* Start Time + Total Planned Preview */}
             <div className="flex items-center justify-between gap-4">
               <div>
                 <label htmlFor="routine-start-time" className="block text-xs font-medium">
-                  {lang === 'bn' ? 'শুরুর সময়' : 'Session Start Time'}
+                  {lang === 'bn' ? 'শুরুর সময়' : 'Start Time'}
                 </label>
                 <input
                   id="routine-start-time"
                   type="time"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
-                  className={`font-mono-tabular mt-1.5 rounded-lg border px-3 py-1.5 text-xs focus:outline-none ${inputSurface}`}
+                  className={`font-mono-tabular mt-1.5 rounded-lg border px-3 py-1.5 text-xs focus:outline-none ${tk.inputSurface}`}
                 />
               </div>
 
               <div className="text-right">
-                <span className={`block text-[11px] ${mutedText}`}>
-                  {lang === 'bn' ? 'মোট বরাদ্দ সময়' : 'Planned Total'}
+                <span className={`block text-[11px] ${tk.mutedText}`}>
+                  {lang === 'bn' ? 'মোট সময়' : 'Total Planned'}
                 </span>
-                <span className={`font-mono-tabular text-lg font-semibold ${accentText}`}>
+                <span className={`font-mono-tabular text-lg font-semibold ${tk.accentText}`}>
                   {allocations.reduce((sum, a) => sum + (a.minutes || 0), 0)}{' '}
                   {lang === 'bn' ? 'মিনিট' : 'mins'}
                 </span>
               </div>
             </div>
 
-            {/* Subject Allocations */}
-            <div className="space-y-3">
+            {/* Subject Inputs */}
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium">{t.subjectsAllocLabel}</span>
                 <button
                   type="button"
                   onClick={handleAddAllocation}
-                  className={`inline-flex items-center gap-1 text-xs font-medium ${accentText} hover:underline`}
+                  className={`inline-flex items-center gap-1 text-xs font-medium ${tk.accentText} hover:underline`}
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>{t.addSubjectBtn}</span>
                 </button>
               </div>
 
-              <div className="space-y-2.5">
-                {allocations.map((alloc) => (
-                  <div
-                    key={alloc.id}
-                    className={`grid grid-cols-12 items-center gap-2 rounded-xl border p-2 ${
-                      isPaper
-                        ? 'border-[#C6BEB0] bg-[#E8E3D8]/60'
-                        : 'border-white/8 bg-[#121419]'
-                    }`}
-                  >
+              {allocations.map((alloc) => (
+                <div
+                  key={alloc.id}
+                  className={`grid grid-cols-12 items-center gap-2 rounded-xl border p-2 ${tk.subCardSurface}`}
+                >
+                  <input
+                    type="text"
+                    value={alloc.subject}
+                    onChange={(e) =>
+                      handleUpdateAllocation(alloc.id, { subject: e.target.value })
+                    }
+                    placeholder={lang === 'bn' ? 'সাবজেক্ট...' : 'Subject...'}
+                    className={`col-span-5 rounded-lg border px-2.5 py-1.5 text-xs focus:outline-none ${tk.inputSurface}`}
+                  />
+                  <div className="col-span-3 flex items-center gap-1">
                     <input
-                      type="text"
-                      value={alloc.subject}
-                      onChange={(e) =>
-                        handleUpdateAllocation(alloc.id, { subject: e.target.value })
-                      }
-                      placeholder={lang === 'bn' ? 'সাবজেক্ট...' : 'Subject...'}
-                      className={`col-span-5 rounded-lg border px-2.5 py-1.5 text-xs focus:outline-none ${inputSurface}`}
-                    />
-                    <div className="col-span-3 flex items-center gap-1">
-                      <input
-                        type="number"
-                        min={10}
-                        max={240}
-                        step={5}
-                        value={alloc.minutes}
-                        onChange={(e) =>
-                          handleUpdateAllocation(alloc.id, {
-                            minutes: Math.max(10, Number(e.target.value) || 30),
-                          })
-                        }
-                        className={`font-mono-tabular w-full rounded-lg border px-2 py-1.5 text-center text-xs focus:outline-none ${inputSurface}`}
-                      />
-                      <span className={`text-[11px] ${mutedText}`}>m</span>
-                    </div>
-                    <select
-                      value={alloc.difficulty}
+                      type="number"
+                      min={10}
+                      max={240}
+                      step={5}
+                      value={alloc.minutes}
                       onChange={(e) =>
                         handleUpdateAllocation(alloc.id, {
-                          difficulty: e.target.value as SubjectAllocation['difficulty'],
+                          minutes: Math.max(10, Number(e.target.value) || 30),
                         })
                       }
-                      className={`col-span-3 rounded-lg border px-1.5 py-1.5 text-[11px] focus:outline-none ${inputSurface}`}
-                    >
-                      <option value="problem-solving">
-                        {lang === 'bn' ? 'প্রবলেম/ম্যাথ' : 'Problems'}
-                      </option>
-                      <option value="conceptual">
-                        {lang === 'bn' ? 'কনসেপ্ট' : 'Concept'}
-                      </option>
-                      <option value="memorization">
-                        {lang === 'bn' ? 'মুখস্থ/থিওরি' : 'Memory'}
-                      </option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveAllocation(alloc.id)}
-                      aria-label="Remove subject"
-                      className={`col-span-1 flex justify-center hover:text-red-400 ${mutedText}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                      className={`font-mono-tabular w-full rounded-lg border px-2 py-1.5 text-center text-xs focus:outline-none ${tk.inputSurface}`}
+                    />
+                    <span className={`text-[11px] ${tk.mutedText}`}>m</span>
                   </div>
-                ))}
-              </div>
-              <p className={`text-[11px] ${mutedText}`}>
-                {lang === 'bn'
-                  ? 'টিপস: ৭৫+ মিনিটের সাবজেক্ট অটোমেটিক বিরতিসহ ২টি স্মার্ট স্প্রিন্টে ভাগ হবে।'
-                  : 'Note: Any 75+ min subject automatically splits into two sprints with an active rest break.'}
-              </p>
+                  <select
+                    value={alloc.difficulty}
+                    onChange={(e) =>
+                      handleUpdateAllocation(alloc.id, {
+                        difficulty: e.target.value as SubjectAllocation['difficulty'],
+                      })
+                    }
+                    className={`col-span-3 rounded-lg border px-1.5 py-1.5 text-[11px] focus:outline-none ${tk.inputSurface}`}
+                  >
+                    <option value="problem-solving">
+                      {lang === 'bn' ? 'ম্যাথ/প্রবলেম' : 'Problems'}
+                    </option>
+                    <option value="conceptual">
+                      {lang === 'bn' ? 'কনসেপ্ট' : 'Concept'}
+                    </option>
+                    <option value="memorization">
+                      {lang === 'bn' ? 'মুখস্থ/থিওরি' : 'Memory'}
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAllocation(alloc.id)}
+                    aria-label="Remove subject"
+                    className={`col-span-1 flex justify-center hover:text-rose-500 ${tk.mutedText}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
             </div>
 
             {/* Struggles Checklist */}
@@ -360,27 +340,13 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
                       type="button"
                       onClick={() => toggleStruggle(st.id)}
                       className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
-                        active
-                          ? isPaper
-                            ? 'border-[#1D355E] bg-[#1D355E]/10 text-[#1F1C18]'
-                            : 'border-[#D4A359]/60 bg-[#D4A359]/10 text-[#F4F2ED]'
-                          : isPaper
-                          ? 'border-[#C6BEB0] bg-white/60 text-[#544D42]'
-                          : 'border-white/8 bg-[#111215] text-[#9CA3AF]'
+                        active ? tk.activeTabBtn : tk.inputSurface
                       }`}
                     >
-                      <span
-                        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                          active
-                            ? 'border-[#D4A359] bg-[#D4A359] text-[#111215]'
-                            : 'border-white/20'
-                        }`}
-                      >
+                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-current/35">
                         {active && <Check className="h-3 w-3" />}
                       </span>
-                      <span className="leading-snug">
-                        {lang === 'bn' ? st.bn : st.en}
-                      </span>
+                      <span className="leading-snug">{lang === 'bn' ? st.bn : st.en}</span>
                     </button>
                   );
                 })}
@@ -391,49 +357,35 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
                 value={customStruggle}
                 onChange={(e) => setCustomStruggle(e.target.value)}
                 placeholder={t.customStrugglePlaceholder}
-                className={`mt-2 w-full rounded-lg border px-3.5 py-2 text-xs focus:outline-none ${inputSurface}`}
+                className={`mt-1 w-full rounded-lg border px-3.5 py-2 text-xs focus:outline-none ${tk.inputSurface}`}
               />
             </div>
 
             {buildFeedback && (
-              <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-3.5 py-2 text-xs font-medium text-emerald-300">
-                <span className={isPaper ? 'text-emerald-900' : 'text-emerald-200'}>
-                  {buildFeedback}
-                </span>
+              <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-3.5 py-2 text-xs font-medium text-emerald-500">
+                {buildFeedback}
               </div>
             )}
 
             <button
               type="submit"
-              className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
-                isPaper
-                  ? 'bg-[#1D355E] text-white hover:bg-[#152849]'
-                  : 'bg-[#D4A359] text-[#111215] hover:bg-[#DFB26D]'
-              }`}
+              className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${tk.primaryBtn}`}
             >
               <Wand2 className="h-4 w-4" />
               <span>{t.buildRoutineBtn}</span>
             </button>
 
             {savedRoutines.length > 0 && (
-              <div
-                className={`border-t pt-4 ${
-                  isPaper ? 'border-[#C6BEB0]' : 'border-white/8'
-                }`}
-              >
-                <p className={`text-xs font-medium ${mutedText}`}>
+              <div className={`border-t pt-4 ${tk.borderSubtle}`}>
+                <p className={`text-xs font-medium ${tk.mutedText}`}>
                   {t.savedRoutinesTitle}
                 </p>
                 <div className="mt-2 space-y-1.5">
                   {savedRoutines.slice(0, 4).map((r) => (
                     <div
                       key={r.id}
-                      className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs transition-colors ${
-                        activeRoutine?.id === r.id
-                          ? isPaper
-                            ? 'bg-[#E2DCD0] text-[#1F1C18]'
-                            : 'bg-[#22252E] text-[#F4F2ED]'
-                          : `${mutedText} hover:bg-white/5`
+                      className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${
+                        activeRoutine?.id === r.id ? tk.subCardSurface : tk.inputSurface
                       }`}
                     >
                       <button
@@ -458,7 +410,7 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
                           }
                         }}
                         aria-label="Delete routine"
-                        className="shrink-0 text-[#717786] hover:text-red-400"
+                        className={`shrink-0 hover:text-rose-500 ${tk.mutedText}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -469,124 +421,113 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
             )}
           </form>
 
-          {/* Generated Routine Blueprint Output */}
-          <div className={`rounded-2xl border p-6 lg:col-span-7 ${cardSurface}`}>
-            <div className="space-y-6">
-              <div
-                className={`border-b pb-5 ${
-                  isPaper ? 'border-[#C6BEB0]' : 'border-white/8'
-                }`}
-              >
-                <div className={`flex flex-wrap items-center justify-between gap-3 text-xs ${mutedText}`}>
-                  <span>
-                    {lang === 'bn'
-                      ? 'গ্লোবাল টিপস-ভিত্তিক পার্সোনালাইজড রুটিন'
-                      : 'Method-Matched Study Routine'}
+          {/* Right Side: Clean Timetable Display + How-To-Execute Panel (7 cols) */}
+          <div className={`space-y-6 rounded-2xl border p-6 lg:col-span-7 ${tk.cardSurface}`}>
+            <div className={`border-b pb-5 ${tk.borderSubtle}`}>
+              <div className={`flex flex-wrap items-center justify-between gap-3 text-xs ${tk.mutedText}`}>
+                <span>
+                  {lang === 'bn'
+                    ? 'গ্লোবাল স্টাডি রুটিন টাইমটেবিল'
+                    : 'Automated Method-Matched Timetable'}
+                </span>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono-tabular font-medium">
+                    {activeRoutine.totalMinutes} {lang === 'bn' ? 'মিনিট' : 'mins total'}
                   </span>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono-tabular">
-                      {activeRoutine.totalMinutes} {lang === 'bn' ? 'মিনিট' : 'mins total'}
+                  <button
+                    type="button"
+                    onClick={handleCopyRoutine}
+                    className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium ${tk.inputSurface}`}
+                  >
+                    <Copy className="h-3 w-3" />
+                    <span>
+                      {copiedBanner
+                        ? lang === 'bn'
+                          ? 'কপি হয়েছে'
+                          : 'Copied'
+                        : lang === 'bn'
+                        ? 'কপি'
+                        : 'Copy'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyRoutine}
-                      className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${inputSurface}`}
-                    >
-                      <Copy className="h-3 w-3" />
-                      <span>
-                        {copiedBanner
-                          ? lang === 'bn'
-                            ? 'কপি হয়েছে'
-                            : 'Copied'
-                          : lang === 'bn'
-                          ? 'কপি করুন'
-                          : 'Copy'}
-                      </span>
-                    </button>
-                  </div>
+                  </button>
                 </div>
-                <h3 className={`mt-1.5 font-display text-2xl font-medium ${headingText}`}>
-                  {lang === 'bn' ? activeRoutine.titleBn : activeRoutine.title}
-                </h3>
-                <p className={`mt-2 text-sm leading-relaxed ${mutedText}`}>
-                  {lang === 'bn' ? activeRoutine.diagnosisBn : activeRoutine.diagnosis}
-                </p>
               </div>
 
-              {/* Daily Study Blocks */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className={`text-xs font-medium ${mutedText}`}>
-                    {lang === 'bn' ? 'সময়ভিত্তিক পড়ার ব্লক' : 'Time-Blocked Execution Schedule'}
-                  </h4>
-                  <span className={`font-mono-tabular text-[11px] ${mutedText}`}>
-                    {completedBlockIdxs.length}/{activeRoutine.dailyPlan.length}{' '}
-                    {lang === 'bn' ? 'সম্পন্ন' : 'completed'}
-                  </span>
-                </div>
+              <h3 className={`mt-1.5 font-display text-2xl font-medium ${tk.headingText}`}>
+                {lang === 'bn' ? activeRoutine.titleBn : activeRoutine.title}
+              </h3>
+              <p className={`mt-2 text-xs leading-relaxed ${tk.mutedText}`}>
+                {lang === 'bn' ? activeRoutine.diagnosisBn : activeRoutine.diagnosis}
+              </p>
+            </div>
 
-                <div
-                  className={`divide-y rounded-xl border ${
-                    isPaper
-                      ? 'divide-[#C6BEB0] border-[#C6BEB0] bg-white/70'
-                      : 'divide-white/8 border-white/8 bg-[#121419]'
-                  }`}
-                >
-                  {activeRoutine.dailyPlan.map((block: RoutineBlock, idx: number) => {
-                    const isChecked = completedBlockIdxs.includes(idx);
-                    return (
-                      <div
-                        key={idx}
-                        className={`flex flex-col gap-3 p-4 transition-opacity sm:flex-row sm:items-start sm:justify-between ${
-                          isChecked ? 'opacity-60' : ''
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleBlockDone(idx)}
-                            aria-label={`Mark ${block.subject} block complete`}
-                            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                              isChecked
-                                ? 'border-emerald-500 bg-emerald-500 text-white'
-                                : isPaper
-                                ? 'border-[#ABA292]'
-                                : 'border-white/20 hover:border-[#D4A359]'
-                            }`}
-                          >
-                            {isChecked && <Check className="h-3.5 w-3.5" />}
-                          </button>
+            {/* Clean Structured Schedule Grid */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className={`font-semibold ${tk.headingText}`}>
+                  {lang === 'bn' ? 'সময়সূচি ও করণীয়' : 'Structured Timetable Blocks'}
+                </span>
+                <span className={`font-mono-tabular ${tk.mutedText}`}>
+                  {completedBlockIdxs.length}/{activeRoutine.dailyPlan.length}{' '}
+                  {lang === 'bn' ? 'সম্পন্ন' : 'done'}
+                </span>
+              </div>
 
-                          <div className="space-y-1">
-                            <div className={`flex flex-wrap items-center gap-2 text-xs ${mutedText}`}>
-                              <span className={`font-mono-tabular font-medium ${accentText}`}>
-                                {block.timeSlot}
-                              </span>
-                              <span aria-hidden="true">·</span>
-                              <span
-                                className={`font-semibold ${headingText} ${
-                                  isChecked ? 'line-through' : ''
-                                }`}
-                              >
-                                {block.subject}
-                              </span>
-                              <span aria-hidden="true">·</span>
-                              <span>{lang === 'bn' ? block.methodBn : block.method}</span>
-                            </div>
-                            <p className="text-sm font-medium">
-                              {lang === 'bn' ? block.objectiveBn : block.objective}
-                            </p>
-                            <p className={`text-xs leading-relaxed ${mutedText}`}>
-                              {lang === 'bn' ? block.techniqueStepBn : block.techniqueStep}
-                            </p>
-                            <p className={`font-mono-tabular text-[11px] ${mutedText}`}>
-                              {lang === 'bn'
-                                ? `পরবর্তী বিরতি: ${block.breakMinutes} মিনিট`
-                                : `Rest after block: ${block.breakMinutes}m`}
-                            </p>
+              <div className={`divide-y rounded-xl border ${tk.divideSubtle} ${tk.subCardSurface}`}>
+                {activeRoutine.dailyPlan.map((block: RoutineBlock, idx: number) => {
+                  const isChecked = completedBlockIdxs.includes(idx);
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex flex-col gap-3 p-4 transition-opacity sm:flex-row sm:items-center sm:justify-between ${
+                        isChecked ? 'opacity-55' : ''
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleBlockDone(idx)}
+                          aria-label={`Mark ${block.subject} block complete`}
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                            isChecked
+                              ? 'border-emerald-500 bg-emerald-500 text-white'
+                              : tk.borderSubtle
+                          }`}
+                        >
+                          {isChecked && <Check className="h-3.5 w-3.5" />}
+                        </button>
+
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className={`font-mono-tabular font-semibold ${tk.accentText}`}>
+                              {block.timeSlot}
+                            </span>
+                            <span className={tk.mutedText}>·</span>
+                            <span
+                              className={`font-semibold ${tk.headingText} ${
+                                isChecked ? 'line-through' : ''
+                              }`}
+                            >
+                              {block.subject}
+                            </span>
+                            <span className={tk.mutedText}>·</span>
+                            <span className={tk.mutedText}>
+                              {lang === 'bn' ? block.methodBn : block.method}
+                            </span>
                           </div>
+                          <p className="text-sm font-medium">
+                            {lang === 'bn' ? block.objectiveBn : block.objective}
+                          </p>
+                          <p className={`text-xs leading-relaxed ${tk.mutedText}`}>
+                            {lang === 'bn' ? block.techniqueStepBn : block.techniqueStep}
+                          </p>
                         </div>
+                      </div>
 
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        <span className={`font-mono-tabular text-[11px] ${tk.mutedText}`}>
+                          +{block.breakMinutes}m rest
+                        </span>
                         <button
                           type="button"
                           onClick={() =>
@@ -597,91 +538,93 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
                               method: lang === 'bn' ? block.methodBn : block.method,
                             })
                           }
-                          className={`inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 self-start rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                            isPaper
-                              ? 'border-[#C6BEB0] bg-white text-[#1F1C18] hover:border-[#1D355E]'
-                              : 'border-white/10 bg-[#1B1E26] text-[#F4F2ED] hover:border-[#D4A359]/60 hover:text-[#D4A359]'
-                          }`}
+                          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold ${tk.primaryBtn}`}
                         >
                           <span className="font-mono-tabular">{block.durationMinutes}m</span>
                           <ArrowRight className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Matched Global Tips + Side-by-Side How to Follow Box */}
+            <div className={`grid grid-cols-1 gap-6 border-t pt-5 sm:grid-cols-2 ${tk.borderSubtle}`}>
+              <div>
+                <h4 className={`flex items-center gap-2 text-xs font-semibold ${tk.headingText}`}>
+                  <Layers className={`h-3.5 w-3.5 ${tk.accentText}`} />
+                  <span>
+                    {lang === 'bn'
+                      ? 'আপনার সমস্যার সেরা কৌশল'
+                      : 'Matched World-Wide Tactics'}
+                  </span>
+                </h4>
+                <ul className="mt-2.5 space-y-2">
+                  {activeRoutine.matchedTips.map((tip) => (
+                    <li key={tip.id} className="text-xs leading-relaxed">
+                      <span className="font-semibold">
+                        {lang === 'bn' ? tip.titleBn : tip.title}:
+                      </span>{' '}
+                      <span className={tk.mutedText}>
+                        {lang === 'bn' ? tip.descriptionBn : tip.description}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
 
-              {/* Matched Tips & 1-4-7 Rule Reminder */}
-              <div
-                className={`grid grid-cols-1 gap-6 border-t pt-5 sm:grid-cols-2 ${
-                  isPaper ? 'border-[#C6BEB0]' : 'border-white/8'
-                }`}
-              >
-                <div>
-                  <h4 className={`flex items-center gap-2 text-xs font-medium ${mutedText}`}>
-                    <Layers className={`h-3.5 w-3.5 ${accentText}`} />
-                    <span>
-                      {lang === 'bn'
-                        ? 'আপনার সমস্যার সেরা কৌশলসমূহ'
-                        : 'Matched Global Tricks'}
-                    </span>
-                  </h4>
-                  <ul className="mt-3 space-y-2">
-                    {activeRoutine.matchedTips.map((tip) => (
-                      <li key={tip.id} className="text-xs leading-relaxed">
-                        <span className="font-semibold">
-                          {lang === 'bn' ? tip.titleBn : tip.title}:
-                        </span>{' '}
-                        <span className={mutedText}>
-                          {lang === 'bn' ? tip.descriptionBn : tip.description}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <h4 className={`flex items-center gap-2 text-xs font-medium ${mutedText}`}>
-                    <BookOpen className={`h-3.5 w-3.5 ${accentText}`} />
-                    <span>
-                      {lang === 'bn' ? '১-৪-৭ রুল ইন্টিগ্রেশন' : '1-4-7 Retention Rule'}
-                    </span>
-                  </h4>
-                  <p className={`mt-3 text-xs leading-relaxed ${mutedText}`}>
+              <div className={`rounded-xl border p-4 ${tk.subCardSurface}`}>
+                <h4 className={`flex items-center gap-2 text-xs font-semibold ${tk.headingText}`}>
+                  <ListChecks className={`h-3.5 w-3.5 ${tk.accentText}`} />
+                  <span>
                     {lang === 'bn'
-                      ? activeRoutine.rule147NoteBn
-                      : activeRoutine.rule147Note}
-                  </p>
-                </div>
+                      ? 'এই রুটিন যেভাবে অনুসরণ করবেন (নির্দেশনা)'
+                      : 'How to Execute This Routine'}
+                  </span>
+                </h4>
+                <ol className={`mt-2.5 space-y-1.5 text-xs leading-relaxed ${tk.mutedText}`}>
+                  <li>
+                    1.{' '}
+                    {lang === 'bn'
+                      ? 'পড়ার ব্লকের পাশে মিনিট বাটনে ক্লিক করে সরাসরি টাইমার চালু করুন।'
+                      : 'Click the minute button on any block above to load it directly into the Focus Timer.'}
+                  </li>
+                  <li>
+                    2.{' '}
+                    {lang === 'bn'
+                      ? 'প্রতিটি ব্লক শেষে Done চাপুন যাতে ১-৪-৭ রিপিটেশন অটো সেভ হয়।'
+                      : 'Press "Done" when the alarm rings to lock Day 1 and auto-schedule Day 4 & Day 7.'}
+                  </li>
+                  <li>
+                    3.{' '}
+                    {lang === 'bn'
+                      ? 'ফোন দূরে রাখুন ও বিরতির সময় স্ক্রিন এড়িয়ে চলুন।'
+                      : 'Keep your phone in another room during sprints and take screen-free breaks.'}
+                  </li>
+                </ol>
+                <p className={`mt-3 border-t pt-2.5 text-[11px] ${tk.borderSubtle} ${tk.accentText}`}>
+                  {lang === 'bn' ? activeRoutine.rule147NoteBn : activeRoutine.rule147Note}
+                </p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 02. World-Class Study Frameworks Shelf */}
-      <section
-        className={`space-y-6 border-t pt-10 ${
-          isPaper ? 'border-[#C6BEB0]' : 'border-white/8'
-        }`}
-      >
+      {/* 02. Worldwide Study Methods (12 Frameworks Across All Regions) + Clear Side-by-Side How-To Panel */}
+      <section className={`space-y-6 border-t pt-10 ${tk.borderSubtle}`}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className={`text-xl font-medium ${headingText}`}>
+            <h2 className={`text-xl font-medium ${tk.headingText}`}>
               {lang === 'bn'
-                ? '০২. বিশ্বসেরা স্টাডি ফ্রেমওয়ার্কসমূহ'
-                : '02. World-Class Study Frameworks'}
+                ? '০২. বিশ্বসেরা ১২টি স্টাডি ফ্রেমওয়ার্ক ও ধাপে ধাপে নির্দেশিকা'
+                : '02. World-Wide Study Methods (12 Frameworks + How-To Guide)'}
             </h2>
           </div>
 
-          <div
-            className={`inline-flex flex-wrap items-center gap-1 rounded-xl border p-1 ${
-              isPaper
-                ? 'border-[#C6BEB0] bg-[#E8E3D8]'
-                : 'border-white/8 bg-[#181A1F]'
-            }`}
-          >
+          <div className={`inline-flex flex-wrap items-center gap-1 rounded-xl border p-1 ${tk.subCardSurface}`}>
             {TRADITION_FILTERS.map((tab) => {
               const active = traditionFilter === tab.id;
               return (
@@ -689,12 +632,8 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setTraditionFilter(tab.id)}
-                  className={`whitespace-nowrap shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                    active
-                      ? isPaper
-                        ? 'bg-[#1D355E] text-white'
-                        : 'bg-[#262932] text-[#F4F2ED]'
-                      : mutedText
+                  className={`whitespace-nowrap shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    active ? tk.primaryBtn : tk.mutedText
                   }`}
                 >
                   {lang === 'bn' ? tab.bn : tab.en}
@@ -704,222 +643,200 @@ export const StudyMethodsModule: React.FC<StudyMethodsModuleProps> = ({
           </div>
         </div>
 
-        <div className="relative">
-          <div className="grid grid-cols-1 gap-5 px-2 pb-5 sm:grid-cols-2 lg:grid-cols-5">
-            {filteredMethods.map((method) => {
-              const isSelected = selectedMethod.id === method.id;
-              return (
-                <button
-                  key={method.id}
-                  type="button"
-                  onClick={() => setSelectedMethod(method)}
-                  className={`group relative flex h-60 flex-col justify-between rounded-r-xl rounded-l-sm border p-5 text-left transition-all duration-200 ${
-                    isSelected
-                      ? '-translate-y-2 border-[#D4A359] shadow-[0_18px_36px_-12px_rgba(0,0,0,0.85)]'
-                      : 'border-white/10 hover:-translate-y-1.5 hover:border-white/25 shadow-[0_12px_24px_-10px_rgba(0,0,0,0.75)]'
-                  }`}
-                  style={{ backgroundColor: method.coverColor }}
-                >
-                  <div
-                    className="absolute inset-y-0 left-0 w-2.5 rounded-l-sm opacity-95"
-                    style={{ backgroundColor: method.spineColor }}
-                  />
-                  <div className="pl-2">
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-[#B7BCC8]">
-                      <span className="truncate">
-                        {lang === 'bn' ? method.originBn : method.origin}
-                      </span>
-                      <span className="font-mono-tabular shrink-0 text-[#D4A359]">
-                        {method.defaultMinutes}m
-                      </span>
-                    </div>
-                    <h3 className="mt-3 font-display text-lg font-medium leading-snug text-[#F4F2ED]">
-                      {lang === 'bn' ? method.titleBn : method.title}
-                    </h3>
+        {/* Clean Bookshelf Row of Global Method Cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+          {filteredMethods.map((method) => {
+            const isSelected = selectedMethod.id === method.id;
+            return (
+              <button
+                key={method.id}
+                type="button"
+                onClick={() => setSelectedMethod(method)}
+                className={`group relative flex h-52 flex-col justify-between rounded-r-xl rounded-l-sm border p-4 text-left transition-all duration-200 ${
+                  isSelected
+                    ? '-translate-y-2 ring-2 ring-current shadow-xl'
+                    : 'hover:-translate-y-1 opacity-90 hover:opacity-100 shadow-md'
+                }`}
+                style={{ backgroundColor: method.coverColor, color: method.textColor }}
+              >
+                <div
+                  className="absolute inset-y-0 left-0 w-2 rounded-l-sm"
+                  style={{ backgroundColor: method.spineColor }}
+                />
+                <div className="pl-2">
+                  <div className="flex items-center justify-between gap-1 text-[10px] opacity-75">
+                    <span className="truncate">
+                      {lang === 'bn' ? method.originBn : method.origin}
+                    </span>
+                    <span className="font-mono-tabular shrink-0 font-semibold">
+                      {method.defaultMinutes}m
+                    </span>
                   </div>
+                  <h3 className="mt-2.5 font-display text-base font-medium leading-snug">
+                    {lang === 'bn' ? method.titleBn : method.title}
+                  </h3>
+                </div>
 
-                  <div className="space-y-3 pl-2">
-                    <p className="line-clamp-3 text-xs leading-relaxed text-[#B2B7C4]">
-                      {lang === 'bn' ? method.subtitleBn : method.subtitle}
-                    </p>
-                    <div className="flex items-center justify-between border-t border-white/10 pt-2.5 text-[11px] text-[#D4A359]">
-                      <span>{method.tradition}</span>
-                      <span>
-                        {isSelected
-                          ? lang === 'bn'
-                            ? 'খোলা আছে'
-                            : 'Open'
-                          : lang === 'bn'
-                          ? 'দেখুন'
-                          : 'Inspect'}
-                      </span>
-                    </div>
+                <div className="space-y-2 pl-2">
+                  <p className="line-clamp-2 text-[11px] leading-relaxed opacity-80">
+                    {lang === 'bn' ? method.subtitleBn : method.subtitle}
+                  </p>
+                  <div className="flex items-center justify-between border-t border-white/15 pt-2 text-[10px] opacity-90">
+                    <span className="truncate">{method.tradition}</span>
+                    <span className="font-semibold">
+                      {isSelected ? (lang === 'bn' ? 'খোলা' : 'Active') : lang === 'bn' ? 'দেখুন' : 'View'}
+                    </span>
                   </div>
-                </button>
-              );
-            })}
-          </div>
-          <div
-            className={`${isPaper ? 'shelf-ledge-light' : 'shelf-ledge'} h-4 w-full rounded-md border-t border-white/10`}
-          />
+                </div>
+              </button>
+            );
+          })}
         </div>
+        <div className={`${tk.shelfLedge} h-3.5 w-full rounded-md border-t border-white/10`} />
 
-        {/* Selected Method Protocol */}
-        <div
-          className={`grid grid-cols-1 gap-8 rounded-2xl border p-6 lg:grid-cols-12 lg:p-8 ${cardSurface}`}
-        >
+        {/* Selected Method Overview + Side-by-Side Clear Instructions ("How to Do It") */}
+        <div className={`grid grid-cols-1 gap-8 rounded-2xl border p-6 lg:grid-cols-12 lg:p-8 ${tk.cardSurface}`}>
           <div className="space-y-4 lg:col-span-5">
-            <div className={`flex flex-wrap items-center gap-2 text-xs ${mutedText}`}>
+            <div className={`flex flex-wrap items-center gap-2 text-xs ${tk.mutedText}`}>
               <span>{selectedMethod.tradition}</span>
               <span aria-hidden="true">·</span>
               <span>{lang === 'bn' ? selectedMethod.originBn : selectedMethod.origin}</span>
               <span aria-hidden="true">·</span>
-              <span className={`font-mono-tabular font-medium ${accentText}`}>
+              <span className={`font-mono-tabular font-semibold ${tk.accentText}`}>
                 {selectedMethod.defaultMinutes} {lang === 'bn' ? 'মিনিট' : 'min block'}
               </span>
             </div>
 
-            <h3 className={`font-display text-2xl font-medium ${headingText}`}>
+            <h3 className={`font-display text-2xl font-medium ${tk.headingText}`}>
               {lang === 'bn' ? selectedMethod.titleBn : selectedMethod.title}
             </h3>
-            <p className={`text-sm leading-relaxed ${mutedText}`}>
+            <p className={`text-sm leading-relaxed ${tk.mutedText}`}>
               {lang === 'bn' ? selectedMethod.summaryBn : selectedMethod.summary}
             </p>
 
-            <div className="pt-2">
-              <p className={`text-xs font-medium ${mutedText}`}>
-                {lang === 'bn' ? 'সবচেয়ে কার্যকর:' : 'Best Applied For'}
+            <div className={`rounded-xl border p-3.5 ${tk.subCardSurface}`}>
+              <p className={`text-xs font-semibold ${tk.headingText}`}>
+                {lang === 'bn' ? 'সবচেয়ে কার্যকর যে ক্ষেত্রে:' : 'Best Applied For'}
               </p>
-              <p className="mt-1 text-sm">
+              <p className={`mt-1 text-xs leading-relaxed ${tk.mutedText}`}>
                 {lang === 'bn' ? selectedMethod.bestForBn : selectedMethod.bestFor}
               </p>
             </div>
 
-            <div className="pt-3">
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={() =>
                   onApplyToTimer({
                     minutes: selectedMethod.defaultMinutes,
-                    method:
-                      lang === 'bn'
-                        ? selectedMethod.titleBn
-                        : selectedMethod.title,
+                    method: lang === 'bn' ? selectedMethod.titleBn : selectedMethod.title,
                   })
                 }
-                className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 rounded-lg bg-[#D4A359] px-4 py-2.5 text-xs font-semibold text-[#111215] transition-colors hover:bg-[#DFB26D]"
+                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2.5 text-xs font-semibold transition-colors ${tk.primaryBtn}`}
               >
                 <Clock className="h-3.5 w-3.5" />
                 <span>
                   {lang === 'bn'
-                    ? `${selectedMethod.defaultMinutes} মিনিটের টাইমারে ব্যবহার করুন`
-                    : `Start ${selectedMethod.defaultMinutes}m Timer with Method`}
+                    ? `${selectedMethod.defaultMinutes} মিনিটের টাইমারে চালু করুন`
+                    : `Start ${selectedMethod.defaultMinutes}m Focus Timer`}
                 </span>
               </button>
             </div>
           </div>
 
-          <div
-            className={`border-t pt-6 lg:col-span-7 lg:border-t-0 lg:border-l lg:pl-8 lg:pt-0 ${
-              isPaper ? 'border-[#C6BEB0]' : 'border-white/8'
-            }`}
-          >
-            <h4 className={`text-xs font-medium tracking-wide ${mutedText}`}>
-              {lang === 'bn' ? 'ধাপে ধাপে কার্যকর পদ্ধতি' : 'Execution Protocol'}
-            </h4>
+          <div className={`border-t pt-6 lg:col-span-7 lg:border-t-0 lg:border-l lg:pl-8 lg:pt-0 ${tk.borderSubtle}`}>
+            <div className="flex items-center justify-between">
+              <h4 className={`text-xs font-semibold uppercase tracking-wider ${tk.accentText}`}>
+                {lang === 'bn'
+                  ? 'কীভাবে করবেন — ধাপে ধাপে নির্দেশিকা'
+                  : 'How to Apply It — Step-by-Step Instructions'}
+              </h4>
+              <BookOpen className={`h-4 w-4 ${tk.mutedText}`} />
+            </div>
             <ol className="mt-4 space-y-3.5">
-              {(lang === 'bn' ? selectedMethod.stepsBn : selectedMethod.steps).map(
-                (step, idx) => (
-                  <li key={idx} className="flex items-start gap-3.5">
-                    <span
-                      className={`font-mono-tabular mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-xs font-medium ${
-                        isPaper
-                          ? 'border-[#C6BEB0] bg-white text-[#8D5B16]'
-                          : 'border-white/10 bg-[#1E2128] text-[#D4A359]'
-                      }`}
-                    >
-                      0{idx + 1}
-                    </span>
-                    <p className="text-sm leading-relaxed">{step}</p>
-                  </li>
-                )
-              )}
+              {(lang === 'bn' ? selectedMethod.stepsBn : selectedMethod.steps).map((step, idx) => (
+                <li key={idx} className="flex items-start gap-3.5">
+                  <span
+                    className={`font-mono-tabular mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-xs font-semibold ${tk.subCardSurface} ${tk.accentText}`}
+                  >
+                    0{idx + 1}
+                  </span>
+                  <p className="text-sm leading-relaxed">{step}</p>
+                </li>
+              ))}
             </ol>
           </div>
         </div>
       </section>
 
-      {/* 03. Complete Global Tips & Tricks Bank */}
-      <section
-        className={`space-y-6 border-t pt-10 ${
-          isPaper ? 'border-[#C6BEB0]' : 'border-white/8'
-        }`}
-      >
+      {/* 03. Global Tips & Tricks Bank */}
+      <section className={`space-y-6 border-t pt-10 ${tk.borderSubtle}`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className={`text-xl font-medium ${headingText}`}>
+            <h2 className={`text-xl font-medium ${tk.headingText}`}>
               {lang === 'bn'
                 ? '০৩. সম্পূর্ণ গ্লোবাল টিপস অ্যান্ড ট্রিকস ভান্ডার'
                 : '03. Complete Global Tips & Tricks Bank'}
             </h2>
-            <p className={`mt-1 text-xs ${mutedText}`}>
+            <p className={`mt-1 text-xs ${tk.mutedText}`}>
               {lang === 'bn'
-                ? 'কোরিয়া, জাপান, চীন এবং হার্ভার্ড-অক্সফোর্ডের সেরা পড়ার ট্রিকসগুলো একসাথে।'
-                : 'Proven study tactics from Seoul, Tokyo, Peking, Harvard, and Oxford gathered in one vault.'}
+                ? 'সারা বিশ্বের সেরা স্টাডি কৌশলসমূহ একসাথে।'
+                : 'Practical cognitive tactics curated from Seoul, Tokyo, Peking, Harvard, Oxford, Germany, Italy, Singapore & Nalanda.'}
             </p>
           </div>
 
-          <div
-            className={`inline-flex flex-wrap items-center gap-1 rounded-xl border p-1 ${
-              isPaper
-                ? 'border-[#C6BEB0] bg-[#E8E3D8]'
-                : 'border-white/8 bg-[#181A1F]'
-            }`}
-          >
-            {TRADITION_FILTERS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setTipsFilter(tab.id)}
-                className={`whitespace-nowrap shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
-                  tipsFilter === tab.id
-                    ? isPaper
-                      ? 'bg-[#1D355E] text-white'
-                      : 'bg-[#262932] text-[#F4F2ED]'
-                    : mutedText
-                }`}
-              >
-                {lang === 'bn' ? tab.bn : tab.en}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <select
+              value={tipsStruggleFilter}
+              onChange={(e) => setTipsStruggleFilter(e.target.value)}
+              aria-label="Filter tips by study struggle"
+              className={`rounded-xl border px-3 py-1.5 text-xs focus:outline-none ${tk.inputSurface}`}
+            >
+              <option value="All">
+                {lang === 'bn' ? 'সব ধরনের সমস্যা' : 'All Study Struggles'}
+              </option>
+              {STRUGGLE_OPTIONS.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {lang === 'bn' ? st.bn : st.en}
+                </option>
+              ))}
+            </select>
+
+            <div className={`inline-flex flex-wrap items-center gap-1 rounded-xl border p-1 ${tk.subCardSurface}`}>
+              {TRADITION_FILTERS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setTipsFilter(tab.id)}
+                  className={`whitespace-nowrap shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                    tipsFilter === tab.id ? tk.primaryBtn : tk.mutedText
+                  }`}
+                >
+                  {lang === 'bn' ? tab.bn : tab.en}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           {filteredTips.map((tip) => (
-            <div
-              key={tip.id}
-              className={`flex flex-col justify-between rounded-xl border p-5 ${cardSurface}`}
-            >
+            <div key={tip.id} className={`flex flex-col justify-between rounded-xl border p-5 ${tk.cardSurface}`}>
               <div>
-                <div className={`flex items-center justify-between gap-2 text-[11px] ${mutedText}`}>
+                <div className={`flex items-center justify-between gap-2 text-[11px] ${tk.mutedText}`}>
                   <span>{tip.origin}</span>
-                  <span className={`font-mono-tabular ${accentText}`}>
+                  <span className={`font-mono-tabular ${tk.accentText}`}>
                     {tip.idealMinutes}m
                   </span>
                 </div>
-                <h3 className={`mt-2 text-sm font-semibold leading-snug ${headingText}`}>
+                <h3 className={`mt-2 text-sm font-semibold leading-snug ${tk.headingText}`}>
                   {lang === 'bn' ? tip.titleBn : tip.title}
                 </h3>
-                <p className={`mt-2 text-xs leading-relaxed ${mutedText}`}>
+                <p className={`mt-2 text-xs leading-relaxed ${tk.mutedText}`}>
                   {lang === 'bn' ? tip.descriptionBn : tip.description}
                 </p>
               </div>
-              <div
-                className={`mt-4 border-t pt-2.5 text-[11px] ${
-                  isPaper ? 'border-[#C6BEB0]' : 'border-white/8'
-                } ${accentText}`}
-              >
+              <div className={`mt-4 border-t pt-2.5 text-[11px] ${tk.borderSubtle} ${tk.accentText}`}>
                 {tip.tradition}
               </div>
             </div>

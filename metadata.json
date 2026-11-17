@@ -1,6 +1,6 @@
 {
-  "name": "Personal Archive",
-  "description": "Made by Al Tahjib Nur Raiyan — A smart study & personal archive featuring global study methods, automated routine builder, 1-4-7 spaced repetition timer, bookshelf journal, and smart library.",
+  "name": "Archive",
+  "description": "Made by Al Tahjib Noor Raiyan — Split-screen video & PDF workspace, background focus timer, 3D bookshelf journal, smart library, math & physics formulas, 118 elements, and English grammar encyclopedia.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

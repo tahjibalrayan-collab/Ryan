@@ -1,4 +1,5 @@
 import {
+  GeneratedRoutine,
   JournalBook,
   Language,
   LibraryBook,
@@ -284,6 +285,58 @@ export const GLOBAL_STUDY_TIPS: StudyTip[] = [
     solvesStruggles: ['exam-speed', 'forgetting', 'distraction'],
     idealMinutes: 45,
   },
+  {
+    id: 'tip-german-leitner',
+    tradition: 'European & Classical',
+    origin: 'German Leitner & Zettelkasten',
+    title: 'Atomic Zettelkasten Note Linking',
+    titleBn: 'জার্মান জেটেলকাস্টেন অ্যাটোমিক নোট লিংকিং',
+    description:
+      'Write one clear idea per note card in your own words and link it to two older concepts you already know. Connected memories never decay like isolated facts.',
+    descriptionBn:
+      'প্রতিটি কার্ডে নিজের ভাষায় একটি মাত্র মূল ধারণা লিখুন এবং পুরোনো দুটি ধারণার সাথে সংযোগ দেখান। সংযুক্ত তথ্য কখনো সহজে ভুলে যাওয়া যায় না।',
+    solvesStruggles: ['comprehension', 'forgetting'],
+    idealMinutes: 40,
+  },
+  {
+    id: 'tip-italian-pomodoro',
+    tradition: 'European & Classical',
+    origin: 'Italian Pomodoro Flow',
+    title: '25/5 Friction-Breaker Sprint',
+    titleBn: 'ইতালীয় পমোডোরো ২৫/৫ ফ্লো স্প্রিন্ট',
+    description:
+      'Commit to just one 25-minute ring without multitasking. Every time an intrusive thought pops up, jot it on a scratch sheet and return immediately.',
+    descriptionBn:
+      'মাত্র ২৫ মিনিটের একটি সাইকেল ঠিক করুন; মাথায় কোনো বাহ্যিক চিন্তা এলে আলাদা কাগজে লিখে আবার সাথে সাথে পড়ায় ফিরে আসুন।',
+    solvesStruggles: ['procrastination', 'distraction', 'fatigue'],
+    idealMinutes: 25,
+  },
+  {
+    id: 'tip-singapore-cpa',
+    tradition: 'Global STEM & Synthesis',
+    origin: 'Singapore Math CPA Model',
+    title: 'Concrete → Pictorial → Abstract Ladder',
+    titleBn: 'সিঙ্গাপুর সিপিএ (চিত্র-থেকে-সমীকরণ) কৌশল',
+    description:
+      'Never jump straight to dry equations. Sketch a quick bar model or diagram first (Pictorial), then translate the geometry directly into symbolic math (Abstract).',
+    descriptionBn:
+      'সরাসরি কঠিন সমীকরণে না গিয়ে আগে খাতায় চিত্র বা মডেল এঁকে নিন, তারপর চিত্র দেখে সমীকরণ তৈরি করুন।',
+    solvesStruggles: ['comprehension', 'exam-speed'],
+    idealMinutes: 45,
+  },
+  {
+    id: 'tip-nalanda-oral',
+    tradition: 'Global STEM & Synthesis',
+    origin: 'Nalanda / Classical Synthesis',
+    title: 'Shabda-Manana Oral Defense',
+    titleBn: 'নালন্দা তর্ক ও মৌখিক পুনরাবৃত্তি',
+    description:
+      'Defend your thesis aloud against an imaginary opponent asking "Why?" three times in a row. Exposed weak spots show exactly what to re-verify.',
+    descriptionBn:
+      'নিজের শেখা বিষয়টি কাল্পনিক প্রতিপক্ষের সামনে যুক্তি দিয়ে ব্যাখ্যা করুন এবং পরপর ৩ বার "কেন?" প্রশ্ন করে দুর্বলতা যাচাই করুন।',
+    solvesStruggles: ['comprehension', 'forgetting', 'fatigue'],
+    idealMinutes: 30,
+  },
 ];
 
 export const GLOBAL_STUDY_METHODS: StudyMethod[] = [
@@ -315,9 +368,9 @@ export const GLOBAL_STUDY_METHODS: StudyMethod[] = [
     ],
     bestFor: 'Building raw focus stamina and beating phone distractions.',
     bestForBn: 'দীর্ঘক্ষণ মনোযোগ ধরে রাখা ও ফোন আসক্তি দূর করা।',
-    coverColor: '#232B2B',
-    spineColor: '#D4A359',
-    textColor: '#F4F2ED',
+    coverColor: '#18181B',
+    spineColor: '#E5E5E5',
+    textColor: '#FAFAFA',
   },
   {
     id: 'japanese-todai-kaizen',
@@ -347,9 +400,9 @@ export const GLOBAL_STUDY_METHODS: StudyMethod[] = [
     ],
     bestFor: 'STEM problem solving and eliminating repeat exam mistakes.',
     bestForBn: 'বিজ্ঞান ও গণিতের ভুল কমানো এবং দ্রুত ইমপ্রুভমেন্ট।',
-    coverColor: '#1E2530',
-    spineColor: '#8CA3C3',
-    textColor: '#F4F2ED',
+    coverColor: '#27272A',
+    spineColor: '#D4D4D8',
+    textColor: '#FAFAFA',
   },
   {
     id: 'peking-intensive',
@@ -377,9 +430,9 @@ export const GLOBAL_STUDY_METHODS: StudyMethod[] = [
     ],
     bestFor: 'Math, Physics, Chemistry, and high-speed exam mastery.',
     bestForBn: 'গণিত, পদার্থবিজ্ঞান, রসায়ন ও পরীক্ষায় দ্রুত সমাধানের দক্ষতা।',
-    coverColor: '#312023',
-    spineColor: '#C97B74',
-    textColor: '#F4F2ED',
+    coverColor: '#1F1F23',
+    spineColor: '#A1A1AA',
+    textColor: '#FAFAFA',
   },
   {
     id: 'harvard-active-recall',
@@ -409,9 +462,9 @@ export const GLOBAL_STUDY_METHODS: StudyMethod[] = [
     ],
     bestFor: 'Long-term memory retention across Biology, Law, and Theory.',
     bestForBn: 'দীর্ঘদিন পড়া মনে রাখা এবং তাত্ত্বিক বিষয়ে দক্ষতা।',
-    coverColor: '#29222C',
-    spineColor: '#B89AC9',
-    textColor: '#F4F2ED',
+    coverColor: '#141416',
+    spineColor: '#E4E4E7',
+    textColor: '#FAFAFA',
   },
   {
     id: 'oxford-feynman',
@@ -441,9 +494,221 @@ export const GLOBAL_STUDY_METHODS: StudyMethod[] = [
     ],
     bestFor: 'Deep conceptual clarity, essays, algorithms, and viva prep.',
     bestForBn: 'জটিল কনসেপ্ট পরিষ্কার করা, রচনা ও মৌখিক পরীক্ষার প্রস্তুতি।',
-    coverColor: '#222A23',
-    spineColor: '#8FB593',
-    textColor: '#F4F2ED',
+    coverColor: '#262626',
+    spineColor: '#D4D4D4',
+    textColor: '#FAFAFA',
+  },
+  {
+    id: 'cornell-5r',
+    title: 'Cornell 5R Systematic Notes',
+    titleBn: 'কর্নেল ৫-আর নোট মেথড (USA)',
+    tradition: 'Ivy League Recall',
+    origin: 'Cornell University (USA)',
+    originBn: 'কর্নেল বিশ্ববিদ্যালয় (আমেরিকা)',
+    subtitle: 'Record, Reduce, Recite, Reflect & Review structured recall.',
+    subtitleBn: 'নোট, কিওয়ার্ড, আবৃত্তি ও সারাংশের মাধ্যমে সুশৃঙ্খল পড়াশোনা।',
+    summary:
+      'Developed by Prof. Walter Pauk at Cornell. Divides pages into Cue Column, Note-Taking Area, and Bottom Summary so every page becomes an instant self-quiz.',
+    summaryBn:
+      'আমেরিকার কর্নেল বিশ্ববিদ্যালয়ের পদ্ধতি। বাম পাশে প্রশ্ন/কিওয়ার্ড, ডানে মূল নোট এবং নিচে ২ লাইনের সারাংশ লিখে প্রতিটি পাতাকে কুইজে রূপান্তর করা হয়।',
+    defaultMinutes: 40,
+    steps: [
+      'Record key concepts on the right 70% of the page during reading or lectures.',
+      'Reduce ideas into short cue questions inside the left 30% margin.',
+      'Recite answers aloud while covering the right column completely.',
+      'Write a 2-sentence bottom summary and review weekly.',
+    ],
+    stepsBn: [
+      'পাতার ডান দিকের ৭০% অংশে মূল তথ্য ও নোট লিখুন।',
+      'বাম দিকের ৩০% অংশে ছোট প্রশ্ন ও কিওয়ার্ড লিখুন।',
+      'ডান দিক ঢেকে রেখে বামের প্রশ্ন দেখে মুখে উত্তর বলুন।',
+      'পাতার নিচে ২ লাইনের সারাংশ লিখে সপ্তাহে একবার রিভাইজ দিন।',
+    ],
+    bestFor: 'Lecture comprehension, history, medicine, and structured textbooks.',
+    bestForBn: 'লেকচার নোট, ইতিহাস, মেডিকেল ও বড় অধ্যায় গুছিয়ে পড়া।',
+    coverColor: '#1E1E22',
+    spineColor: '#D1D5DB',
+    textColor: '#FAFAFA',
+  },
+  {
+    id: 'german-zettelkasten',
+    title: 'German Leitner & Zettelkasten',
+    titleBn: 'জার্মান লিটনার বক্স ও জেটেলকাস্টেন',
+    tradition: 'European & Classical',
+    origin: 'German Research Tradition',
+    originBn: 'জার্মান গবেষণা পদ্ধতি',
+    subtitle: 'Atomic linked note cards paired with interval card boxes.',
+    subtitleBn: 'সংযুক্ত নোট কার্ড ও ভুল-সঠিকের ভিত্তিতে ব্যবধান রেখে রিভিশন।',
+    summary:
+      'Combines Sebastian Leitner’s physical spaced flashcard boxes with Niklas Luhmann’s Zettelkasten web of linked atomic ideas—used to master vast syllabi permanently.',
+    summaryBn:
+      'জার্মান বিজ্ঞানী লিটনারের ফ্ল্যাশকার্ড বক্স এবং লুহম্যানের সংযুক্ত নোট কার্ড পদ্ধতির সমন্বয়। এতে কঠিন বিষয়গুলো আলাদা বক্সে রেখে দ্রুত বারবার পড়া হয়।',
+    defaultMinutes: 40,
+    steps: [
+      'Write one atomic formula, reaction, or idea per index card.',
+      'Link each new card to two related cards already in your archive.',
+      'Test yourself: correct cards move forward (Day 4 -> Day 7); missed cards stay in Box 1.',
+    ],
+    stepsBn: [
+      'প্রতিটি কার্ডে কেবল একটি মূল সূত্র, বিক্রিয়া বা ধারণা লিখুন।',
+      'নতুন কার্ডটির সাথে আগের দুটি সম্পর্কিত ধারণার সংযোগ উল্লেখ করুন।',
+      'নিজেকে পরীক্ষা করুন: পারলে পরের ধাপে নিন, ভুল হলে বক্স-১ এ রেখে পরদিন আবার পড়ুন।',
+    ],
+    bestFor: 'Organic chemistry reactions, vocabulary, laws, and connected theory.',
+    bestForBn: 'জৈব রসায়নের বিক্রিয়া, সংজ্ঞা, সূত্র ও গভীর গবেষণা।',
+    coverColor: '#222226',
+    spineColor: '#E5E7EB',
+    textColor: '#FAFAFA',
+  },
+  {
+    id: 'italian-pomodoro-flow',
+    title: 'Italian Pomodoro Flow System',
+    titleBn: 'ইতালীয় পমোডোরো ফ্লো সিস্টেম',
+    tradition: 'European & Classical',
+    origin: 'Francesco Cirillo (Italy)',
+    originBn: 'ফ্রান্সেসকো সিরিলো (ইতালি)',
+    subtitle: '25-minute anti-procrastination sprints with distraction capture.',
+    subtitleBn: 'আলসেমি কাটানোর ২৫ মিনিটের ফ্লো এবং চিন্তা-নোট করার কৌশল।',
+    summary:
+      'More than a timer: uses an Inventory Sheet + distraction capture rule so perfectionism and phone urges never break your momentum.',
+    summaryBn:
+      'শুধু ঘড়ি নয়—শুরু করার ভয় কাটাতে ২৫ মিনিটের ছোট টার্গেট এবং মাঝখানে আসা অপ্রয়োজনীয় চিন্তা আলাদা কাগজে লিখে মন স্থির রাখার ইতালীয় পদ্ধতি।',
+    defaultMinutes: 25,
+    steps: [
+      'Pick ONE single task before pressing Start—never switch mid-ring.',
+      'If distracted by a thought or message urge, write it on a scratchpad and keep going.',
+      'Take a clean 5-minute physical stretch break (no social feeds); take 20m after 4 rings.',
+    ],
+    stepsBn: [
+      'শুরু করার আগে কেবল একটি কাজ বেছে নিন—রিং শেষ না হওয়া পর্যন্ত কাজ বদলাবেন না।',
+      'মন অন্যদিকে গেলে কাগজে লিখে রেখে সাথে সাথে পড়ায় ফিরুন।',
+      'প্রতি ২৫ মিনিটে ৫ মিনিট এবং ৪ বার পর ২০ মিনিট স্ক্রিনমুক্ত বিশ্রাম নিন।',
+    ],
+    bestFor: 'Overcoming starting paralysis, fatigue, and short attention spans.',
+    bestForBn: 'পড়া শুরু করার আলসেমি, ক্লান্তি ও মনোযোগহীনতা দূর করা।',
+    coverColor: '#19191C',
+    spineColor: '#D4D4D8',
+    textColor: '#FAFAFA',
+  },
+  {
+    id: 'finnish-phenomenon',
+    title: 'Finnish Phenomenon Synthesis',
+    titleBn: 'ফিনিশ ফেনোমেনন-ভিত্তিক শেখা',
+    tradition: 'European & Classical',
+    origin: 'Finnish Pedagogy (Finland)',
+    originBn: 'ফিনল্যান্ড শিক্ষা মডেল',
+    subtitle: 'Anchor every abstract chapter to one real-world phenomenon.',
+    subtitleBn: 'প্রতিটি অধ্যায়ের পেছনের বাস্তব ঘটনা ও বড় চিত্র আগে বোঝা।',
+    summary:
+      'Rather than memorizing isolated syllabus fragments, start with a concrete real-world system and map Physics, Chemistry, and Math principles around it.',
+    summaryBn:
+      'বিচ্ছিন্নভাবে মুখস্থ না করে একটি বাস্তব ঘটনা বা সিস্টেমকে কেন্দ্র করে পদার্থ, রসায়ন ও গণিতের সূত্রগুলো একসাথে যুক্ত করে বোঝার ফিনিশ কৌশল।',
+    defaultMinutes: 40,
+    steps: [
+      'Open the chapter by asking: What real-world mechanism does this explain?',
+      'Draw a 1-page mind-web connecting formulas, units, and real examples.',
+      'Write 3 "What happens if X doubles?" stress-test questions and solve them.',
+    ],
+    stepsBn: [
+      'অধ্যায় শুরুর আগে নিজেকে প্রশ্ন করুন: এটি বাস্তবের কোন কাজ ব্যাখ্যা করে?',
+      'এক পাতায় সূত্র, একক এবং বাস্তব উদাহরণগুলোর মধ্যে সংযোগের একটি ম্যাপ আঁকুন।',
+      '"X দ্বিগুণ হলে কী হবে?"—এ ধরনের ৩টি বিশ্লেষণী প্রশ্ন নিজে বানিয়ে সমাধান করুন।',
+    ],
+    bestFor: 'Interdisciplinary intuition, physics systems, and deep essays.',
+    bestForBn: 'বিজ্ঞান ও সমাজবিজ্ঞানের মূল কনসেপ্ট গভীরভাবে বোঝা।',
+    coverColor: '#252529',
+    spineColor: '#CBD5E1',
+    textColor: '#FAFAFA',
+  },
+  {
+    id: 'singapore-cpa',
+    title: 'Singaporean CPA Mastery Model',
+    titleBn: 'সিঙ্গাপুর সিপিএ (CPA) মাস্টারি মডেল',
+    tradition: 'Global STEM & Synthesis',
+    origin: 'Singapore Math & Science',
+    originBn: 'সিঙ্গাপুর শিক্ষাক্রম',
+    subtitle: 'Concrete → Pictorial → Abstract progression for STEM intuition.',
+    subtitleBn: 'বাস্তব উদাহরণ → চিত্র/মডেল → বিমূর্ত সমীকরণ ধাপ।',
+    summary:
+      'Internationally famous for producing top quantitative problem-solvers. Forces visual modeling before symbolic manipulation.',
+    summaryBn:
+      'গণিত ও বিজ্ঞানে বিশ্বসেরা ফলাফলের পেছনের পদ্ধতি—অঙ্ক দেখেই মুখস্থ সূত্রে না গিয়ে আগে চিত্র এঁকে যুক্তি স্পষ্ট করা।',
+    defaultMinutes: 45,
+    steps: [
+      'Concrete: Ground the concept in a physical measurement or real lab observation.',
+      'Pictorial: Sketch bar models, free-body diagrams, or reaction pathways first.',
+      'Abstract: Translate your sketch cleanly into equations and verify units.',
+    ],
+    stepsBn: [
+      'বাস্তব ধাপ: পরিমাণ বা ল্যাব পর্যবেক্ষণ দিয়ে বিষয়টির মূল রূপ বুঝুন।',
+      'চিত্র ধাপ: বার-মডেল, ফ্রি-বডি ডায়াগ্রাম বা বিক্রিয়া পথ আগে খাতায় আঁকুন।',
+      'বিমূর্ত ধাপ: চিত্র দেখে সমীকরণ তৈরি করে সমাধান করুন ও একক যাচাই করুন।',
+    ],
+    bestFor: 'Word problems, mechanics, stoichiometry, and thermodynamics.',
+    bestForBn: 'পদার্থ, রসায়ন ও জটিল কথার অঙ্ক নির্ভুলভাবে সমাধান।',
+    coverColor: '#1B1B1F',
+    spineColor: '#E2E8F0',
+    textColor: '#FAFAFA',
+  },
+  {
+    id: 'russian-olympiad',
+    title: 'Russian Olympiad Proof Sheet',
+    titleBn: 'রাশিয়ান অলিম্পিয়াড প্রুফ-শিট মেথড',
+    tradition: 'Global STEM & Synthesis',
+    origin: 'Moscow / Eastern European',
+    originBn: 'মস্কো / পূর্ব ইউরোপীয় ধারা',
+    subtitle: 'Minimal hints, derivation-first mastery & invariant hunting.',
+    subtitleBn: 'হিন্টস ছাড়া নিজে প্রমাণ বের করা এবং মূল নিয়ম খুঁজে বের করা।',
+    summary:
+      'Built on graded problem sheets (Listki) where students derive core theorems themselves and verify limiting cases instead of reading solved examples.',
+    summaryBn:
+      'সমাধান করা উদাহরণ মুখস্থ না করে নিজে প্রমাণ ও সীমাবদ্ধ ক্ষেত্র যাচাই করে শেখার অলিম্পিয়াড পদ্ধতি।',
+    defaultMinutes: 60,
+    steps: [
+      'Close the solution manual completely; spend at least 15 quiet minutes wrestling with one problem.',
+      'Test extreme/boundary cases (x → 0, x → ∞, T → 0) to verify your formula.',
+      'Write a clean, step-by-step formal derivation from first principles.',
+    ],
+    stepsBn: [
+      'গাইড বা সমাধান বই বন্ধ রেখে একটি কঠিন সমস্যায় অন্তত ১৫ মিনিট নিজে চিন্তা করুন।',
+      'সূত্রের সীমা যাচাই করুন (যেমন মান ০ বা অসীম হলে কী হয়)।',
+      'প্রথম নীতি থেকে পরিষ্কার ধাপে ধাপে পুরো প্রমাণটি খাতায় লিখুন।',
+    ],
+    bestFor: 'Olympiads, calculus proofs, organic mechanisms, and hard exams.',
+    bestForBn: 'অলিম্পিয়াড, ক্যালকুলাস ও কঠিন ভর্তি পরীক্ষার প্রস্তুতি।',
+    coverColor: '#141414',
+    spineColor: '#FFFFFF',
+    textColor: '#FAFAFA',
+  },
+  {
+    id: 'nalanda-synthesis',
+    title: 'Nalanda Shabda-Manana Debate',
+    titleBn: 'নালন্দা শব্দ-মনন ও তর্ক পদ্ধতি',
+    tradition: 'Global STEM & Synthesis',
+    origin: 'Ancient South Asian Tradition',
+    originBn: 'প্রাচীন নালন্দা ঐতিহ্য',
+    subtitle: 'Listen/Read (Shravana), Question (Manana) & Teach aloud.',
+    subtitleBn: 'গভীর শ্রবণ, যুক্তিতর্কে যাচাই এবং স্পষ্ট উচ্চারণে উপস্থাপন।',
+    summary:
+      'Classical Asian scholarly rigor built on three pillars: attentive absorption, ruthless counter-questioning, and crystallized oral articulation.',
+    summaryBn:
+      'প্রাচীন এশীয় বিদ্যাপীঠের তিন স্তম্ভ—মনোযোগে গ্রহণ (শ্রবণ), নিজের সাথে যুক্তিতর্কে যাচাই (মনন) এবং অন্যকে বোঝানোর মতো স্পষ্ট প্রকাশ।',
+    defaultMinutes: 35,
+    steps: [
+      'Shravana: Read or listen through one compact section once with zero interruptions.',
+      'Manana: Cross-examine every claim with counterexamples until no ambiguity remains.',
+      'Vyakhyana: Deliver a crisp 5-minute spoken explanation without glancing at notes.',
+    ],
+    stepsBn: [
+      'শ্রবণ: কোনো বিরতি ছাড়া একটি নির্দিষ্ট অংশ গভীর মনোযোগে শেষ করুন।',
+      'মনন: প্রতিটি যুক্তিকে পাল্টা প্রশ্ন করে যাচাই করুন যতক্ষণ না সব স্পষ্ট হয়।',
+      'ব্যাখ্যান: নোট না দেখে ৫ মিনিটে মূল বক্তব্য স্পষ্টভাবে মুখে উপস্থাপন করুন।',
+    ],
+    bestFor: 'Philosophy, humanities, viva exams, and deep retention.',
+    bestForBn: 'দর্শন, সাহিত্য, ভাইভা ও দীর্ঘস্থায়ী স্মৃতিশক্তি।',
+    coverColor: '#202024',
+    spineColor: '#D4D4D4',
+    textColor: '#FAFAFA',
   },
 ];
 
@@ -452,7 +717,8 @@ export function assembleSmartRoutine(
   allocations: SubjectAllocation[],
   selectedStruggles: string[],
   customStruggle: string,
-  lang: Language
+  lang: Language,
+  startTime = '18:00'
 ): {
   title: string;
   titleBn: string;
@@ -477,14 +743,39 @@ export function assembleSmartRoutine(
 
   const matchedTips = scoredTips.slice(0, 4);
 
-  let currentMinuteCursor = 0;
+  const [startH, startM] = startTime.split(':').map((n) => Number(n) || 0);
+  let currentMinuteCursor = startH * 60 + startM;
   const formatClock = (mins: number) => {
-    const h = String(Math.floor(mins / 60)).padStart(2, '0');
-    const m = String(mins % 60).padStart(2, '0');
+    const wrapped = ((mins % 1440) + 1440) % 1440;
+    const h = String(Math.floor(wrapped / 60)).padStart(2, '0');
+    const m = String(wrapped % 60).padStart(2, '0');
     return `${h}:${m}`;
   };
 
-  const dailyPlan: RoutineBlock[] = validAllocations.map((alloc, idx) => {
+  // Split 75+ min allocations into 2 smart sprints with an active break
+  const expandedAllocations: Array<SubjectAllocation & { sprintLabel?: string; sprintLabelBn?: string }> = [];
+  for (const alloc of validAllocations) {
+    if (alloc.minutes >= 75) {
+      const firstHalf = Math.ceil(alloc.minutes / 2);
+      const secondHalf = alloc.minutes - firstHalf;
+      expandedAllocations.push({
+        ...alloc,
+        minutes: firstHalf,
+        sprintLabel: 'Sprint 1 (Core)',
+        sprintLabelBn: 'স্প্রিন্ট ১ (মূল অংশ)',
+      });
+      expandedAllocations.push({
+        ...alloc,
+        minutes: secondHalf,
+        sprintLabel: 'Sprint 2 (Recall & Drills)',
+        sprintLabelBn: 'স্প্রিন্ট ২ (রিকল ও অনুশীলন)',
+      });
+    } else {
+      expandedAllocations.push(alloc);
+    }
+  }
+
+  const dailyPlan: RoutineBlock[] = expandedAllocations.map((alloc, idx) => {
     let chosenMethod: StudyMethod;
     if (alloc.difficulty === 'problem-solving') {
       chosenMethod =
@@ -510,19 +801,26 @@ export function assembleSmartRoutine(
 
     const matchingTip = matchedTips[idx % matchedTips.length];
 
-    const objective =
+    const objectiveBase =
       alloc.difficulty === 'problem-solving'
         ? `Complete timed problem tiers & log slips in Machigai Error Note`
         : alloc.difficulty === 'memorization'
         ? `Encode core definitions & run closed-book Baekji blank-sheet recall`
         : `Map first principles & simplify core concepts via Feynman check`;
 
-    const objectiveBn =
+    const objectiveBaseBn =
       alloc.difficulty === 'problem-solving'
         ? `টাইম ধরে প্রবলেম সলভ করুন এবং ভুলগুলো মাচিগাই নোটে লিখে রাখুন`
         : alloc.difficulty === 'memorization'
         ? `মূল তথ্য আয়ত্ত করে বই বন্ধ করে বেকজি সাদা কাগজে মুখস্থ রিকল দিন`
         : `মূল ধারণাগুলো ফাইনম্যান পদ্ধতিতে সহজ ভাষায় সাজিয়ে নিন`;
+
+    const objective = alloc.sprintLabel
+      ? `${alloc.sprintLabel}: ${objectiveBase}`
+      : objectiveBase;
+    const objectiveBn = alloc.sprintLabelBn
+      ? `${alloc.sprintLabelBn}: ${objectiveBaseBn}`
+      : objectiveBaseBn;
 
     return {
       timeSlot: `${startLabel}–${endLabel}`,
@@ -582,6 +880,22 @@ export function assembleSmartRoutine(
     rule147NoteBn,
   };
 }
+
+export const INITIAL_SAVED_ROUTINE: GeneratedRoutine = {
+  id: 'routine-seed-default',
+  createdAt: new Date().toISOString(),
+  ...assembleSmartRoutine(
+    [
+      { id: 'sub-1', subject: 'Chemistry', minutes: 60, difficulty: 'problem-solving' },
+      { id: 'sub-2', subject: 'Linear Algebra', minutes: 45, difficulty: 'conceptual' },
+      { id: 'sub-3', subject: 'Biology / Theory', minutes: 35, difficulty: 'memorization' },
+    ],
+    ['forgetting', 'procrastination'],
+    '',
+    'en',
+    '18:00'
+  ),
+};
 
 const today = new Date();
 const threeDaysAgo = new Date(today);

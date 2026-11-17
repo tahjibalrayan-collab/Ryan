@@ -1,11 +1,25 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Globe, Moon, Play, Sun, Volume2, VolumeX } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Bell,
+  BellOff,
+  Download,
+  Globe,
+  Image as ImageIcon,
+  Moon,
+  Music2,
+  Play,
+  Sun,
+  Upload,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { UI_TEXT } from './data/i18n';
 import {
   addDaysToDateKey,
   DEFAULT_GENRES,
   DEFAULT_GENRE_TOPICS,
   formatDateKey,
+  GLOBAL_STUDY_METHODS,
   INITIAL_JOURNALS,
   INITIAL_LIBRARY_BOOKS,
   INITIAL_SPACED_REPETITION,
@@ -15,36 +29,80 @@ import {
 import { useLocalStorage } from './hooks/useLocalStorage';
 import {
   AppTheme,
+  CustomAudioTrack,
   GeneratedRoutine,
   JournalBook,
   Language,
   LibraryBook,
   NavModule,
+  SavedVideoLink,
   SpacedRepetitionItem,
   StudyLog,
 } from './types';
-import { ambientEngine, AmbientTrackId } from './utils/audioEngine';
+import { ambientEngine, AmbientTrackId, timerAlarm } from './utils/audioEngine';
+import {
+  exportFullArchiveBackup,
+  restoreArchiveFromFile,
+} from './utils/backupRestore';
+import {
+  deleteAudioBlob,
+  loadAudioObjectUrl,
+  saveAudioBlob,
+} from './utils/pdfStorage';
+import { getThemeTokens } from './utils/themeStyles';
 import { StudyMethodsModule } from './components/StudyMethodsModule';
 import { StudyTimerModule } from './components/StudyTimerModule';
 import { PersonalJournalModule } from './components/PersonalJournalModule';
 import { LibraryFocusModule } from './components/LibraryFocusModule';
+import { SciLabVideoModule } from './components/SciLabVideoModule';
+import { EnglishGrammarModule } from './components/EnglishGrammarModule';
+import { WallpaperStudioModule } from './components/WallpaperStudioModule';
+import { MusicStudioModule } from './components/MusicStudioModule';
+
+interface TimerRuntimeSnapshot {
+  durationMinutes: number;
+  secondsLeft: number;
+  isRunning: boolean;
+  targetEndAt: number | null;
+  isFinishedAlert: boolean;
+  soundEnabled: boolean;
+  subject: string;
+  topic: string;
+  method: string;
+  activeReviewItemId?: string;
+}
+
+const DEFAULT_TIMER_SNAPSHOT: TimerRuntimeSnapshot = {
+  durationMinutes: 60,
+  secondsLeft: 60 * 60,
+  isRunning: false,
+  targetEndAt: null,
+  isFinishedAlert: false,
+  soundEnabled: true,
+  subject: 'Chemistry',
+  topic: 'Chemical Bonding & Hybridization',
+  method: GLOBAL_STUDY_METHODS[0].title,
+  activeReviewItemId: undefined,
+};
 
 export default function App() {
-  const [activeModule, setActiveModule] = useState<NavModule>('methods');
+  const [activeModule, setActiveModule] = useState<NavModule>('library');
   const [lang, setLang] = useLocalStorage<Language>('pa_language_v1', 'en');
-  const [theme, setTheme] = useLocalStorage<AppTheme>('pa_theme_v2', 'paper');
+  const [theme, setTheme] = useLocalStorage<AppTheme>('pa_theme_v3', 'mono-light');
 
   const t = UI_TEXT[lang];
-  const isPaper = theme === 'paper';
+  const tk = getThemeTokens(theme);
 
-  const navItems: Array<{ id: NavModule; label: string }> = [
+  const primaryNavItems: Array<{ id: NavModule; label: string }> = [
     { id: 'methods', label: t.navMethods },
     { id: 'timer', label: t.navTimer },
     { id: 'journal', label: t.navJournal },
     { id: 'library', label: t.navLibrary },
+    { id: 'lab', label: t.navLab },
+    { id: 'grammar', label: t.navGrammar },
   ];
 
-  // Persistent state across all 4 modules
+  // Persistent domain state
   const [savedRoutines, setSavedRoutines] = useLocalStorage<GeneratedRoutine[]>(
     'pa_saved_routines_v2',
     []
@@ -73,6 +131,14 @@ export default function App() {
     'pa_library_genre_topics_v1',
     DEFAULT_GENRE_TOPICS
   );
+  const [savedVideos, setSavedVideos] = useLocalStorage<SavedVideoLink[]>(
+    'pa_saved_videos_v1',
+    []
+  );
+  const [customAudioTracks, setCustomAudioTracks] = useLocalStorage<CustomAudioTrack[]>(
+    'pa_custom_audio_tracks_v1',
+    []
+  );
 
   // Cloud sync state (PC <-> Mobile via /api/archive)
   const [isSyncedOnline, setIsSyncedOnline] = useState(false);
@@ -82,7 +148,7 @@ export default function App() {
     null
   );
 
-  // Global wallpaper & ambient audio settings
+  // Wallpaper & ambient audio state
   const [activeWallpaperId, setActiveWallpaperId] = useLocalStorage<string>(
     'pa_wallpaper_id_v1',
     'obsidian-default'
@@ -100,19 +166,229 @@ export default function App() {
   const [activeTrackId, setActiveTrackId] = useState<AmbientTrackId>('rain-library');
   const [musicVolume, setMusicVolume] = useState(0.45);
 
-  const [preloadedTimerSession, setPreloadedTimerSession] = useState<{
-    minutes: number;
-    subject?: string;
-    topic?: string;
-    method?: string;
-    reviewItemId?: string;
-  } | null>(null);
+  // Global Backup/Restore Toast + File Input
+  const [globalBackupToast, setGlobalBackupToast] = useState<string | null>(null);
+  const footerRestoreRef = useRef<HTMLInputElement | null>(null);
+
+  // ==================== TRUE BACKGROUND-PERSISTENT TIMER ENGINE ====================
+  const [timerRuntime, setTimerRuntime] = useLocalStorage<TimerRuntimeSnapshot>(
+    'pa_timer_runtime_v3',
+    DEFAULT_TIMER_SNAPSHOT
+  );
+
+  const {
+    durationMinutes,
+    secondsLeft,
+    isRunning,
+    targetEndAt,
+    isFinishedAlert,
+    soundEnabled,
+    subject: timerSubject,
+    topic: timerTopic,
+    method: timerMethod,
+    activeReviewItemId,
+  } = timerRuntime;
+
+  const [isAlarmRinging, setIsAlarmRinging] = useState<boolean>(timerAlarm.isRinging());
+  const [showAlarmConfirmModal, setShowAlarmConfirmModal] = useState<boolean>(false);
+
+  const showToast = useCallback((msg: string) => {
+    setGlobalBackupToast(msg);
+    window.setTimeout(() => setGlobalBackupToast(null), 5000);
+  }, []);
 
   useEffect(() => {
     ambientEngine.setVolume(musicVolume);
   }, [musicVolume]);
 
-  // Check cloud archive on initial visit (helpful when opening link on mobile for the first time)
+  useEffect(() => {
+    const unsub = timerAlarm.subscribe((ringing) => {
+      setIsAlarmRinging(ringing);
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
+
+  // Re-trigger alarm if page finished while closed or backgrounded
+  useEffect(() => {
+    if (isFinishedAlert && soundEnabled && !timerAlarm.isRinging()) {
+      timerAlarm.startContinuous(0);
+      setShowAlarmConfirmModal(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Background-immune Web Worker + timestamp diffing so switching tabs/minimizing never throttles countdown
+  useEffect(() => {
+    if (!isRunning || targetEndAt === null) return;
+
+    const syncClock = () => {
+      const remaining = Math.max(0, Math.ceil((targetEndAt - Date.now()) / 1000));
+      if (remaining <= 0) {
+        setTimerRuntime((prev) => ({
+          ...prev,
+          secondsLeft: 0,
+          isRunning: false,
+          targetEndAt: null,
+          isFinishedAlert: true,
+        }));
+        if (soundEnabled) {
+          timerAlarm.startContinuous(0); // Loops continuously until user explicitly picks "Yes"
+        }
+        setShowAlarmConfirmModal(true);
+      } else {
+        setTimerRuntime((prev) =>
+          prev.secondsLeft === remaining ? prev : { ...prev, secondsLeft: remaining }
+        );
+      }
+    };
+
+    syncClock();
+
+    // Inline Web Worker prevents Chrome/Edge background tab timer throttling
+    let worker: Worker | null = null;
+    try {
+      const workerBlob = new Blob(
+        [
+          'setInterval(function(){ postMessage("tick"); }, 500);',
+        ],
+        { type: 'application/javascript' }
+      );
+      const workerUrl = URL.createObjectURL(workerBlob);
+      worker = new Worker(workerUrl);
+      worker.onmessage = syncClock;
+      URL.revokeObjectURL(workerUrl);
+    } catch {
+      worker = null;
+    }
+
+    const fallbackId = window.setInterval(syncClock, 500);
+    const onVisChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncClock();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisChange);
+
+    return () => {
+      if (worker) worker.terminate();
+      window.clearInterval(fallbackId);
+      document.removeEventListener('visibilitychange', onVisChange);
+    };
+  }, [isRunning, targetEndAt, soundEnabled, setTimerRuntime]);
+
+  const handleStopAlarmConfirmYes = useCallback(() => {
+    timerAlarm.stop();
+    setShowAlarmConfirmModal(false);
+    setTimerRuntime((prev) => ({ ...prev, isFinishedAlert: false }));
+  }, [setTimerRuntime]);
+
+  const handleStopAlarmDeclineNo = useCallback(() => {
+    // Keep alarm ringing! Close modal overlay temporarily while leaving top persistent prompt active
+    setShowAlarmConfirmModal(false);
+  }, []);
+
+  const handleSelectTimerDuration = useCallback(
+    (mins: number) => {
+      const clamped = Math.max(1, Math.min(180, mins));
+      timerAlarm.stop();
+      setShowAlarmConfirmModal(false);
+      setTimerRuntime((prev) => ({
+        ...prev,
+        durationMinutes: clamped,
+        secondsLeft: clamped * 60,
+        isRunning: false,
+        targetEndAt: null,
+        isFinishedAlert: false,
+      }));
+    },
+    [setTimerRuntime]
+  );
+
+  const handleToggleTimerRun = useCallback(() => {
+    timerAlarm.stop();
+    setShowAlarmConfirmModal(false);
+    setTimerRuntime((prev) => {
+      if (prev.isRunning) {
+        const rem =
+          prev.targetEndAt !== null
+            ? Math.max(0, Math.ceil((prev.targetEndAt - Date.now()) / 1000))
+            : prev.secondsLeft;
+        return {
+          ...prev,
+          secondsLeft: rem,
+          isRunning: false,
+          targetEndAt: null,
+          isFinishedAlert: false,
+        };
+      }
+      const baseSeconds =
+        prev.secondsLeft > 0 ? prev.secondsLeft : prev.durationMinutes * 60;
+      return {
+        ...prev,
+        secondsLeft: baseSeconds,
+        targetEndAt: Date.now() + baseSeconds * 1000,
+        isRunning: true,
+        isFinishedAlert: false,
+      };
+    });
+  }, [setTimerRuntime]);
+
+  const handleResetTimer = useCallback(() => {
+    timerAlarm.stop();
+    setShowAlarmConfirmModal(false);
+    setTimerRuntime((prev) => ({
+      ...prev,
+      isRunning: false,
+      targetEndAt: null,
+      isFinishedAlert: false,
+      secondsLeft: prev.durationMinutes * 60,
+    }));
+  }, [setTimerRuntime]);
+
+  const handleCompleteAndClearTimer = useCallback(() => {
+    timerAlarm.stop();
+    setShowAlarmConfirmModal(false);
+    setTimerRuntime((prev) => ({
+      ...prev,
+      isRunning: false,
+      targetEndAt: null,
+      isFinishedAlert: false,
+      secondsLeft: prev.durationMinutes * 60,
+      activeReviewItemId: undefined,
+    }));
+  }, [setTimerRuntime]);
+
+  const handleApplyToTimer = useCallback(
+    (opts: {
+      minutes: number;
+      subject?: string;
+      topic?: string;
+      method?: string;
+      reviewItemId?: string;
+    }) => {
+      const mins = Math.max(1, Math.min(180, opts.minutes || 35));
+      timerAlarm.stop();
+      setShowAlarmConfirmModal(false);
+      setTimerRuntime((prev) => ({
+        ...prev,
+        durationMinutes: mins,
+        secondsLeft: mins * 60,
+        isRunning: false,
+        targetEndAt: null,
+        isFinishedAlert: false,
+        subject: opts.subject ?? prev.subject,
+        topic: opts.topic ?? prev.topic,
+        method: opts.method ?? prev.method,
+        activeReviewItemId: opts.reviewItemId,
+      }));
+      setActiveModule('timer');
+    },
+    [setTimerRuntime]
+  );
+
+  // Pull cloud archive on initial visit if local is uninitialized
   useEffect(() => {
     let active = true;
     const hasLocalLibrary = window.localStorage.getItem('pa_library_books_v3') !== null;
@@ -137,11 +413,12 @@ export default function App() {
           if (Array.isArray(data.archive.savedRoutines)) {
             setSavedRoutines(data.archive.savedRoutines);
           }
+          if (Array.isArray(data.archive.savedVideos)) {
+            setSavedVideos(data.archive.savedVideos);
+          }
         }
       })
-      .catch(() => {
-        // Offline or server unavailable; localStorage remains active
-      });
+      .catch(() => {});
 
     return () => {
       active = false;
@@ -149,7 +426,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSyncNow = useCallback(async () => {
+  const handleSyncNow = useCallback(async (): Promise<boolean> => {
     setIsSyncing(true);
     try {
       const res = await fetch('/api/archive', {
@@ -163,6 +440,7 @@ export default function App() {
           studyLogs,
           spacedItems,
           savedRoutines,
+          savedVideos,
         }),
       });
       if (res.ok) {
@@ -171,7 +449,11 @@ export default function App() {
         if (data?.syncedAt) {
           setLastSyncedAt(data.syncedAt);
         }
+        return true;
       }
+      return false;
+    } catch {
+      return false;
     } finally {
       setIsSyncing(false);
     }
@@ -183,14 +465,15 @@ export default function App() {
     studyLogs,
     spacedItems,
     savedRoutines,
+    savedVideos,
     setLastSyncedAt,
   ]);
 
-  const handlePullFromServer = useCallback(async () => {
+  const handlePullFromServer = useCallback(async (): Promise<boolean> => {
     setIsSyncing(true);
     try {
       const res = await fetch('/api/archive');
-      if (!res.ok) return;
+      if (!res.ok) return false;
       const data = await res.json();
       if (data?.ok && data.archive) {
         if (Array.isArray(data.archive.books)) setLibraryBooks(data.archive.books);
@@ -204,11 +487,18 @@ export default function App() {
         if (Array.isArray(data.archive.savedRoutines)) {
           setSavedRoutines(data.archive.savedRoutines);
         }
+        if (Array.isArray(data.archive.savedVideos)) {
+          setSavedVideos(data.archive.savedVideos);
+        }
         setIsSyncedOnline(true);
         if (data.archive.syncedAt) {
           setLastSyncedAt(data.archive.syncedAt);
         }
+        return true;
       }
+      return false;
+    } catch {
+      return false;
     } finally {
       setIsSyncing(false);
     }
@@ -220,53 +510,175 @@ export default function App() {
     setStudyLogs,
     setSpacedItems,
     setSavedRoutines,
+    setSavedVideos,
     setLastSyncedAt,
   ]);
+
+  // Full Platform Lossless Backup & Restore
+  const handleExportFullBackup = useCallback(async (): Promise<string> => {
+    const { counts } = await exportFullArchiveBackup({
+      libraryBooks,
+      libraryGenres,
+      genreTopics,
+      journals,
+      savedRoutines,
+      studyLogs,
+      spacedItems,
+      savedVideos,
+      customAudioTracks,
+      theme,
+      lang,
+      activeWallpaperId,
+      customWallpaper,
+      backdropDimming,
+      musicVolume,
+      soundEnabled,
+    });
+    const msg = `Full Archive backed up (${counts.books} books, ${counts.pdfFiles} PDFs, ${counts.journals} journals, ${counts.routines} routines, ${counts.customAudio} audio tracks).`;
+    showToast(msg);
+    return msg;
+  }, [
+    libraryBooks,
+    libraryGenres,
+    genreTopics,
+    journals,
+    savedRoutines,
+    studyLogs,
+    spacedItems,
+    savedVideos,
+    customAudioTracks,
+    theme,
+    lang,
+    activeWallpaperId,
+    customWallpaper,
+    backdropDimming,
+    musicVolume,
+    soundEnabled,
+    showToast,
+  ]);
+
+  const handleRestoreFullFile = useCallback(
+    async (file: File) => {
+      const result = await restoreArchiveFromFile(file, {
+        setLibraryBooks,
+        setLibraryGenres,
+        setGenreTopics,
+        setJournals,
+        setSavedRoutines,
+        setStudyLogs,
+        setSpacedItems,
+        setSavedVideos,
+        setCustomAudioTracks,
+        setTheme,
+        setLang,
+        setActiveWallpaperId,
+        setCustomWallpaper,
+        setBackdropDimming,
+        setMusicVolume,
+        setSoundEnabled: (val) =>
+          setTimerRuntime((prev) => ({ ...prev, soundEnabled: val })),
+      });
+      showToast(result.message);
+      return result;
+    },
+    [
+      setLibraryBooks,
+      setLibraryGenres,
+      setGenreTopics,
+      setJournals,
+      setSavedRoutines,
+      setStudyLogs,
+      setSpacedItems,
+      setSavedVideos,
+      setCustomAudioTracks,
+      setTheme,
+      setLang,
+      setActiveWallpaperId,
+      setCustomWallpaper,
+      setBackdropDimming,
+      setMusicVolume,
+      setTimerRuntime,
+      showToast,
+    ]
+  );
+
+  // Persistent BGM engine
+  const playTrackById = useCallback(
+    async (trackId: AmbientTrackId) => {
+      if (trackId.startsWith('custom:')) {
+        const audioId = trackId.slice('custom:'.length);
+        const url = await loadAudioObjectUrl(audioId);
+        const meta = customAudioTracks.find((c) => c.id === audioId);
+        if (url) {
+          ambientEngine.startCustomObjectUrl(
+            trackId,
+            url,
+            meta?.title || 'Custom Focus Audio'
+          );
+          setIsMusicPlaying(true);
+          return;
+        }
+      }
+      ambientEngine.start(trackId);
+      setIsMusicPlaying(true);
+    },
+    [customAudioTracks]
+  );
 
   const handleToggleMusic = useCallback(() => {
     if (isMusicPlaying) {
       ambientEngine.stop();
       setIsMusicPlaying(false);
     } else {
-      ambientEngine.start(activeTrackId);
-      setIsMusicPlaying(true);
+      playTrackById(activeTrackId);
     }
-  }, [isMusicPlaying, activeTrackId]);
+  }, [isMusicPlaying, activeTrackId, playTrackById]);
 
   const handleSelectTrack = useCallback(
     (trackId: AmbientTrackId) => {
       setActiveTrackId(trackId);
-      if (isMusicPlaying) {
-        ambientEngine.setTrack(trackId);
-      } else {
-        ambientEngine.start(trackId);
+      playTrackById(trackId);
+    },
+    [playTrackById]
+  );
+
+  const handleUploadCustomAudio = useCallback(
+    async (file: File) => {
+      const id = `aud-${Date.now()}`;
+      await saveAudioBlob(id, file);
+      const trackMeta: CustomAudioTrack = {
+        id,
+        title: file.name.replace(/\.[^.]+$/, ''),
+        fileName: file.name,
+        sizeBytes: file.size,
+        addedAt: new Date().toISOString(),
+      };
+      setCustomAudioTracks((prev) => [trackMeta, ...prev]);
+      const trackKey: AmbientTrackId = `custom:${id}`;
+      setActiveTrackId(trackKey);
+      const url = await loadAudioObjectUrl(id);
+      if (url) {
+        ambientEngine.startCustomObjectUrl(trackKey, url, trackMeta.title);
         setIsMusicPlaying(true);
       }
     },
-    [isMusicPlaying]
+    [setCustomAudioTracks]
   );
 
-  const handleApplyToTimer = useCallback(
-    (opts: {
-      minutes: number;
-      subject?: string;
-      topic?: string;
-      method?: string;
-      reviewItemId?: string;
-    }) => {
-      setPreloadedTimerSession(opts);
-      setActiveModule('timer');
+  const handleDeleteCustomAudio = useCallback(
+    async (id: string) => {
+      if (activeTrackId === `custom:${id}`) {
+        ambientEngine.stop();
+        setIsMusicPlaying(false);
+        setActiveTrackId('rain-library');
+      }
+      await deleteAudioBlob(id);
+      setCustomAudioTracks((prev) => prev.filter((c) => c.id !== id));
     },
-    []
+    [activeTrackId, setCustomAudioTracks]
   );
 
-  const handleClearPreloaded = useCallback(() => {
-    setPreloadedTimerSession(null);
-  }, []);
-
-  // Strict 1-4-7 Spaced Repetition Transition:
-  // stageIndex 0 (Waiting Day 4 Recall) -> stageIndex 1 (Waiting Day 7 Finish)
-  // stageIndex 1 (Waiting Day 7 Finish) -> stageIndex 2 (Finished!)
+  // Strict 1-4-7 Spaced Repetition
   const handleAdvanceReview = useCallback(
     (itemId: string) => {
       const todayKey = formatDateKey(new Date());
@@ -312,7 +724,6 @@ export default function App() {
       if (reviewItemId) {
         handleAdvanceReview(reviewItemId);
       } else {
-        // Day 1 studied -> Schedule Day 4 (+3 days) Recall and Day 7 (+6 days) Finish
         const day4Date = addDaysToDateKey(todayKey, 3);
         const day7Date = addDaysToDateKey(todayKey, 6);
         const newSpacedItem: SpacedRepetitionItem = {
@@ -332,6 +743,34 @@ export default function App() {
     },
     [setStudyLogs, setSpacedItems, handleAdvanceReview]
   );
+
+  const handleQuickDoneFromDock = useCallback(() => {
+    const cleanSubject = timerSubject.trim() || 'General Study';
+    const cleanTopic = timerTopic.trim() || 'Split-Screen Focus Session';
+    const elapsedSeconds = durationMinutes * 60 - secondsLeft;
+    const loggedMinutes =
+      elapsedSeconds >= 60 ? Math.round(elapsedSeconds / 60) : durationMinutes;
+
+    handleLogStudySession(
+      {
+        subject: cleanSubject,
+        topic: cleanTopic,
+        method: timerMethod,
+        durationMinutes: loggedMinutes,
+      },
+      activeReviewItemId
+    );
+    handleCompleteAndClearTimer();
+  }, [
+    timerSubject,
+    timerTopic,
+    durationMinutes,
+    secondsLeft,
+    timerMethod,
+    activeReviewItemId,
+    handleLogStudySession,
+    handleCompleteAndClearTimer,
+  ]);
 
   const handleAddTopicToGenre = useCallback(
     (genre: string, topic: string) => {
@@ -414,31 +853,25 @@ export default function App() {
       };
     }
     return (
-      WALLPAPER_PRESETS.find((w) => w.id === activeWallpaperId) ??
-      WALLPAPER_PRESETS[0]
+      WALLPAPER_PRESETS.find((w) => w.id === activeWallpaperId) ?? WALLPAPER_PRESETS[0]
     );
   }, [activeWallpaperId, customWallpaper]);
 
   const dueReviewCount = useMemo(() => {
     const todayKey = formatDateKey(new Date());
-    return spacedItems.filter(
-      (i) => i.stageIndex < 2 && i.nextReviewDate <= todayKey
-    ).length;
+    return spacedItems.filter((i) => i.stageIndex < 2 && i.nextReviewDate <= todayKey).length;
   }, [spacedItems]);
 
+  const liveClockMins = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const liveClockSecs = String(secondsLeft % 60).padStart(2, '0');
+
   return (
-    <div
-      className={`relative min-h-screen transition-colors ${
-        isPaper
-          ? 'paper-archive-bg text-[#211E19]'
-          : 'bg-[#111215] text-[#F4F2ED]'
-      }`}
-    >
-      {/* Global Customizable Wallpaper Layer (in Midnight Study mode) */}
-      {!isPaper && activeWallpaper.id !== 'obsidian-default' && (
+    <div className={`relative min-h-screen transition-colors ${tk.rootBg}`}>
+      {/* Global Wallpaper Backdrop (Active behind dark/slate themes) */}
+      {tk.isDark && activeWallpaper.id !== 'obsidian-default' && (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-0 z-0"
+          className="no-print pointer-events-none fixed inset-0 z-0"
           style={
             activeWallpaper.type === 'image'
               ? {
@@ -453,37 +886,105 @@ export default function App() {
         >
           <div
             className="h-full w-full"
-            style={{ backgroundColor: `rgba(14, 15, 19, ${backdropDimming})` }}
+            style={{ backgroundColor: `rgba(11, 11, 13, ${backdropDimming})` }}
           />
         </div>
       )}
 
-      {/* Top Bar Contract: [Brand title] — [4 nav links] — [1 primary action] */}
-      <header
-        className={`sticky top-0 z-40 border-b backdrop-blur-md ${
-          isPaper
-            ? 'border-[#C6BEB0] bg-[#DCD6CA]/90'
-            : 'border-white/8 bg-[#111215]/90'
-        }`}
-      >
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-8 px-4 py-4 sm:px-6 lg:px-8">
-          {/* Zone 1: Brand Title */}
+      {/* Global Persistent Alarm Looping Banner */}
+      {isAlarmRinging && (
+        <div className="no-print sticky top-0 z-50 flex flex-wrap items-center justify-center gap-4 bg-rose-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg">
+          <span className="flex items-center gap-2">
+            <Bell className="h-4 w-4 animate-bounce" />
+            <span>
+              {lang === 'bn'
+                ? `সময় শেষ (${timerSubject})! অ্যালার্ম বাজছে — বন্ধ করতে চান?`
+                : `Focus Complete (${timerSubject})! Do you want to stop the alarm?`}
+            </span>
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleStopAlarmConfirmYes}
+              className="inline-flex items-center gap-1 rounded-md bg-white px-3 py-1 text-xs font-bold text-rose-700 hover:bg-zinc-100"
+            >
+              <BellOff className="h-3.5 w-3.5" />
+              <span>Yes — Stop Alarm</span>
+            </button>
+            {!showAlarmConfirmModal && (
+              <button
+                type="button"
+                onClick={() => setShowAlarmConfirmModal(true)}
+                className="rounded-md border border-white/40 px-2.5 py-1 text-xs text-white hover:bg-white/10"
+              >
+                Ask Prompt
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Confirmation Modal when Timer Reaches 00:00 */}
+      {showAlarmConfirmModal && (
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md space-y-5 rounded-2xl border border-rose-500/40 bg-[#141417] p-6 text-white shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-500/20">
+                <Bell className="h-6 w-6 animate-bounce" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-rose-300">
+                  Focus Timer Complete (00:00)
+                </p>
+                <h2 className="font-display text-xl font-semibold text-white">
+                  {timerSubject}
+                </h2>
+              </div>
+            </div>
+
+            <p className="text-sm font-medium text-zinc-200">
+              {lang === 'bn'
+                ? 'আপনি কি অ্যালার্মটি বন্ধ করতে চান? (Yes / No)'
+                : 'Do you want to stop the alarm? (Yes / No)'}
+            </p>
+            <p className="text-xs text-zinc-400">
+              The alarm will keep ringing continuously until you select &ldquo;Yes&rdquo;.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleStopAlarmDeclineNo}
+                className="rounded-xl border border-white/20 px-5 py-2.5 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+              >
+                No (Keep Ringing)
+              </button>
+              <button
+                type="button"
+                onClick={handleStopAlarmConfirmYes}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-rose-700"
+              >
+                <BellOff className="h-4 w-4" />
+                <span>Yes (Stop Alarm)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top Bar Contract: [Brand title] — [Primary nav links] — [Start Focus / Live Timer] */}
+      <header className={`no-print sticky top-0 z-40 border-b backdrop-blur-md ${tk.headerBg}`}>
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
           <button
             type="button"
-            onClick={() => setActiveModule('methods')}
-            className={`font-display whitespace-nowrap shrink-0 text-left text-lg font-medium tracking-tight transition-opacity hover:opacity-85 ${
-              isPaper ? 'text-[#1F1C18]' : 'text-[#F4F2ED]'
-            }`}
+            onClick={() => setActiveModule('library')}
+            className={`font-display whitespace-nowrap shrink-0 text-left text-lg font-semibold tracking-tight transition-opacity hover:opacity-80 ${tk.headingText}`}
           >
             {t.brand}
           </button>
 
-          {/* Zone 2: 4 Single-line Navigation Links */}
-          <nav
-            aria-label="Primary modules"
-            className="hidden items-center gap-7 md:flex"
-          >
-            {navItems.map((item) => {
+          <nav aria-label="Primary modules" className="hidden items-center gap-5 lg:gap-6 md:flex overflow-x-auto">
+            {primaryNavItems.map((item) => {
               const isActive = activeModule === item.id;
               return (
                 <button
@@ -491,75 +992,55 @@ export default function App() {
                   type="button"
                   onClick={() => setActiveModule(item.id)}
                   className={`relative whitespace-nowrap shrink-0 py-1 text-sm font-medium transition-colors ${
-                    isActive
-                      ? isPaper
-                        ? 'text-[#1F1C18]'
-                        : 'text-[#F4F2ED]'
-                      : isPaper
-                      ? 'text-[#665E52] hover:text-[#1F1C18]'
-                      : 'text-[#8D93A1] hover:text-[#F4F2ED]'
+                    isActive ? tk.headingText : `${tk.mutedText} hover:opacity-85`
                   }`}
                 >
                   {item.label}
-                  {item.id === 'timer' && dueReviewCount > 0 && (
-                    <span
-                      className={`font-mono-tabular ml-1.5 text-[11px] ${
-                        isPaper ? 'text-[#8D5B16]' : 'text-[#D4A359]'
-                      }`}
-                    >
+                  {item.id === 'timer' && isRunning && (
+                    <span className={`font-mono-tabular ml-1.5 text-[11px] font-semibold ${tk.accentText}`}>
+                      ({liveClockMins}:{liveClockSecs})
+                    </span>
+                  )}
+                  {item.id === 'timer' && !isRunning && dueReviewCount > 0 && (
+                    <span className={`font-mono-tabular ml-1.5 text-[11px] ${tk.accentText}`}>
                       ({dueReviewCount})
                     </span>
                   )}
                   {isActive && (
-                    <span
-                      className={`absolute inset-x-0 -bottom-[17px] h-0.5 ${
-                        isPaper ? 'bg-[#1D355E]' : 'bg-[#D4A359]'
-                      }`}
-                    />
+                    <span className={`absolute inset-x-0 -bottom-[15px] h-0.5 ${tk.accentBg}`} />
                   )}
                 </button>
               );
             })}
           </nav>
 
-          {/* Zone 3: 1 Primary Action */}
           <div className="shrink-0">
             <button
               type="button"
-              onClick={() => handleApplyToTimer({ minutes: 35 })}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg px-4 py-2 text-xs font-semibold transition-colors ${
-                isPaper
-                  ? 'bg-[#1D355E] text-white hover:bg-[#152849]'
-                  : 'bg-[#D4A359] text-[#111215] hover:bg-[#DFB26D]'
-              }`}
+              onClick={() => setActiveModule('timer')}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg px-4 py-2 text-xs font-semibold transition-colors ${tk.primaryBtn}`}
             >
               <Play className="h-3.5 w-3.5 fill-current" />
-              <span>{t.startFocus}</span>
+              <span className="font-mono-tabular">
+                {isRunning ? `${liveClockMins}:${liveClockSecs}` : t.startFocus}
+              </span>
             </button>
           </div>
         </div>
 
-        {/* Mobile Navigation Strip */}
+        {/* Mobile Nav Strip */}
         <div
-          className={`flex items-center justify-around border-t px-2 py-2 md:hidden ${
-            isPaper ? 'border-[#C6BEB0]' : 'border-white/6'
-          }`}
+          className={`flex items-center gap-1 overflow-x-auto border-t px-3 py-2 md:hidden ${tk.borderSubtle}`}
         >
-          {navItems.map((item) => {
+          {primaryNavItems.map((item) => {
             const isActive = activeModule === item.id;
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setActiveModule(item.id)}
-                className={`whitespace-nowrap shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                  isActive
-                    ? isPaper
-                      ? 'bg-[#1D355E] text-white'
-                      : 'bg-[#22252E] text-[#D4A359]'
-                    : isPaper
-                    ? 'text-[#544D42]'
-                    : 'text-[#8D93A1]'
+                className={`whitespace-nowrap shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium ${
+                  isActive ? tk.primaryBtn : tk.mutedText
                 }`}
               >
                 {item.label}
@@ -569,37 +1050,43 @@ export default function App() {
         </div>
       </header>
 
-      {/* Workspace Control Strip (Below Header): Language Switch (EN / বাংলা) & Theme Switch */}
-      <div className="relative z-10 mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 pt-5 sm:px-6 lg:px-8">
-        <p className={`text-xs ${isPaper ? 'text-[#665E52]' : 'text-[#8D93A1]'}`}>
-          {t.subtitle}
-        </p>
+      {/* Secondary Studio Strip */}
+      <div className="no-print relative z-10 mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 pt-4 sm:px-6 lg:px-8">
+        <p className={`text-xs font-medium ${tk.mutedText}`}>{t.subtitle}</p>
 
-        <div className="flex items-center gap-2.5">
-          {/* Language Switcher */}
-          <div
-            className={`inline-flex items-center gap-1 rounded-lg border p-0.5 ${
-              isPaper
-                ? 'border-[#BFB7A8] bg-[#E8E3D8]'
-                : 'border-white/10 bg-[#181A1F]'
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveModule('wallpaper')}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              activeModule === 'wallpaper' ? tk.activeTabBtn : tk.inputSurface
             }`}
           >
-            <Globe
-              className={`ml-2 h-3.5 w-3.5 ${
-                isPaper ? 'text-[#544D42]' : 'text-[#8D93A1]'
-              }`}
-            />
+            <ImageIcon className="h-3.5 w-3.5" />
+            <span>{t.navWallpaper}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveModule('music')}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              activeModule === 'music' ? tk.activeTabBtn : tk.inputSurface
+            }`}
+          >
+            <Music2 className={`h-3.5 w-3.5 ${isMusicPlaying ? 'animate-pulse' : ''}`} />
+            <span>
+              {t.navMusic}
+              {isMusicPlaying ? ' •' : ''}
+            </span>
+          </button>
+
+          <div className={`inline-flex items-center gap-0.5 rounded-lg border p-0.5 ${tk.subCardSurface}`}>
+            <Globe className={`ml-2 h-3.5 w-3.5 ${tk.mutedText}`} />
             <button
               type="button"
               onClick={() => setLang('en')}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                lang === 'en'
-                  ? isPaper
-                    ? 'bg-[#1D355E] text-white'
-                    : 'bg-[#262932] text-[#F4F2ED]'
-                  : isPaper
-                  ? 'text-[#544D42]'
-                  : 'text-[#8D93A1]'
+              className={`rounded-md px-2 py-1 text-xs font-medium ${
+                lang === 'en' ? tk.primaryBtn : tk.mutedText
               }`}
             >
               EN
@@ -607,46 +1094,43 @@ export default function App() {
             <button
               type="button"
               onClick={() => setLang('bn')}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                lang === 'bn'
-                  ? isPaper
-                    ? 'bg-[#1D355E] text-white'
-                    : 'bg-[#262932] text-[#F4F2ED]'
-                  : isPaper
-                  ? 'text-[#544D42]'
-                  : 'text-[#8D93A1]'
+              className={`rounded-md px-2 py-1 text-xs font-medium ${
+                lang === 'bn' ? tk.primaryBtn : tk.mutedText
               }`}
             >
               বাংলা
             </button>
           </div>
 
-          {/* Theme Switcher */}
           <button
             type="button"
-            onClick={() => setTheme(isPaper ? 'midnight' : 'paper')}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-              isPaper
-                ? 'border-[#BFB7A8] bg-[#E8E3D8] text-[#211E19] hover:bg-[#DDD6C8]'
-                : 'border-white/10 bg-[#181A1F] text-[#D1D5DB] hover:border-[#D4A359]/50'
-            }`}
+            onClick={() => setTheme(tk.isDark ? 'mono-light' : 'mono-dark')}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${tk.inputSurface}`}
           >
-            {isPaper ? (
+            {tk.isDark ? (
               <>
-                <Moon className="h-3.5 w-3.5" />
-                <span>{t.midnightStudy}</span>
+                <Sun className="h-3.5 w-3.5" />
+                <span>{lang === 'bn' ? 'লাইট মোড' : 'Light Mono'}</span>
               </>
             ) : (
               <>
-                <Sun className="h-3.5 w-3.5 text-[#D4A359]" />
-                <span>{t.classicPaper}</span>
+                <Moon className="h-3.5 w-3.5" />
+                <span>{lang === 'bn' ? 'ডার্ক মোড' : 'Dark Mono'}</span>
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Main Content Container */}
+      {globalBackupToast && (
+        <div className="no-print mx-auto mt-3 max-w-3xl px-4">
+          <div className="rounded-xl border border-emerald-500/35 bg-emerald-500/15 px-4 py-2.5 text-center text-xs font-medium text-emerald-500">
+            {globalBackupToast}
+          </div>
+        </div>
+      )}
+
+      {/* Main Content View */}
       <main className="relative z-10 mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         {activeModule === 'methods' && (
           <StudyMethodsModule
@@ -665,8 +1149,41 @@ export default function App() {
           <StudyTimerModule
             lang={lang}
             theme={theme}
-            preloadedSession={preloadedTimerSession}
-            onClearPreloaded={handleClearPreloaded}
+            durationMinutes={durationMinutes}
+            secondsLeft={secondsLeft}
+            isRunning={isRunning}
+            isAlarmRinging={isAlarmRinging}
+            isFinishedAlert={isFinishedAlert}
+            soundEnabled={soundEnabled}
+            subject={timerSubject}
+            topic={timerTopic}
+            method={timerMethod}
+            activeReviewItemId={activeReviewItemId}
+            onSelectDuration={handleSelectTimerDuration}
+            onToggleRun={handleToggleTimerRun}
+            onResetTimer={handleResetTimer}
+            onToggleSound={() =>
+              setTimerRuntime((prev) => ({ ...prev, soundEnabled: !prev.soundEnabled }))
+            }
+            onStopAlarm={handleStopAlarmConfirmYes}
+            onChangeSubject={(val) =>
+              setTimerRuntime((prev) => ({ ...prev, subject: val }))
+            }
+            onChangeTopic={(val) =>
+              setTimerRuntime((prev) => ({ ...prev, topic: val }))
+            }
+            onChangeMethod={(val) =>
+              setTimerRuntime((prev) => ({ ...prev, method: val }))
+            }
+            onStartReviewSession={(item) =>
+              handleApplyToTimer({
+                minutes: 25,
+                subject: item.subject,
+                topic: item.topic,
+                reviewItemId: item.id,
+              })
+            }
+            onCompleteAndClearTimer={handleCompleteAndClearTimer}
             studyLogs={studyLogs}
             onLogSession={handleLogStudySession}
             onDeleteLog={(id) =>
@@ -704,14 +1221,12 @@ export default function App() {
           <LibraryFocusModule
             lang={lang}
             theme={theme}
-            onToggleTheme={() => setTheme(isPaper ? 'midnight' : 'paper')}
+            onNavigateModule={setActiveModule}
             books={libraryBooks}
             genres={libraryGenres}
             genreTopics={genreTopics}
             onAddGenre={(g) =>
-              setLibraryGenres((prev) =>
-                prev.includes(g) ? prev : [...prev, g]
-              )
+              setLibraryGenres((prev) => (prev.includes(g) ? prev : [...prev, g]))
             }
             onAddTopicToGenre={handleAddTopicToGenre}
             onUpdateBook={(updated) =>
@@ -739,12 +1254,57 @@ export default function App() {
             lastSyncedAt={lastSyncedAt}
             onSyncNow={handleSyncNow}
             onPullFromServer={handlePullFromServer}
-            isMusicPlaying={isMusicPlaying}
-            activeTrackId={activeTrackId}
-            musicVolume={musicVolume}
-            onToggleMusic={handleToggleMusic}
-            onSelectTrack={handleSelectTrack}
-            onChangeVolume={setMusicVolume}
+            onExportFullBackup={handleExportFullBackup}
+            onRestoreFullFile={handleRestoreFullFile}
+          />
+        )}
+
+        {activeModule === 'lab' && (
+          <SciLabVideoModule
+            lang={lang}
+            theme={theme}
+            savedVideos={savedVideos}
+            libraryBooks={libraryBooks}
+            dockedTimer={{
+              durationMinutes,
+              secondsLeft,
+              isRunning,
+              isAlarmRinging,
+              subject: timerSubject,
+              topic: timerTopic,
+              onSelectDuration: handleSelectTimerDuration,
+              onToggleRun: handleToggleTimerRun,
+              onResetTimer: handleResetTimer,
+              onStopAlarm: handleStopAlarmConfirmYes,
+              onChangeSubject: (val) =>
+                setTimerRuntime((prev) => ({ ...prev, subject: val })),
+              onChangeTopic: (val) =>
+                setTimerRuntime((prev) => ({ ...prev, topic: val })),
+              onQuickDone: handleQuickDoneFromDock,
+            }}
+            onAddVideo={(vid) => setSavedVideos((prev) => [vid, ...prev])}
+            onDeleteVideo={(id) =>
+              setSavedVideos((prev) => prev.filter((v) => v.id !== id))
+            }
+            onStudyVideoInTimer={(vid) =>
+              handleApplyToTimer({
+                minutes: 45,
+                subject: vid.subject,
+                topic: vid.title,
+              })
+            }
+          />
+        )}
+
+        {activeModule === 'grammar' && (
+          <EnglishGrammarModule lang={lang} theme={theme} />
+        )}
+
+        {activeModule === 'wallpaper' && (
+          <WallpaperStudioModule
+            lang={lang}
+            theme={theme}
+            onSelectTheme={setTheme}
             activeWallpaperId={activeWallpaperId}
             onSelectWallpaper={setActiveWallpaperId}
             customWallpaper={customWallpaper}
@@ -753,58 +1313,96 @@ export default function App() {
             onChangeBackdropDimming={setBackdropDimming}
           />
         )}
+
+        {activeModule === 'music' && (
+          <MusicStudioModule
+            lang={lang}
+            theme={theme}
+            isMusicPlaying={isMusicPlaying}
+            activeTrackId={activeTrackId}
+            musicVolume={musicVolume}
+            customTracks={customAudioTracks}
+            onToggleMusic={handleToggleMusic}
+            onSelectTrack={handleSelectTrack}
+            onChangeVolume={setMusicVolume}
+            onUploadAudioFile={handleUploadCustomAudio}
+            onDeleteCustomTrack={handleDeleteCustomAudio}
+          />
+        )}
       </main>
 
-      {/* Editorial Footer */}
-      <footer
-        className={`relative z-10 border-t backdrop-blur-sm ${
-          isPaper
-            ? 'border-[#C6BEB0] bg-[#DCD6CA]/80'
-            : 'border-white/8 bg-[#111215]/80'
-        }`}
-      >
+      {/* Editorial About & Credit Footer + Global Backup / Restore */}
+      <footer className={`no-print relative z-10 border-t backdrop-blur-sm ${tk.headerBg}`}>
         <div
-          className={`mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 py-6 text-xs sm:flex-row sm:px-6 lg:px-8 ${
-            isPaper ? 'text-[#665E52]' : 'text-[#8D93A1]'
-          }`}
+          className={`mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 py-6 text-xs sm:flex-row sm:px-6 lg:px-8 ${tk.mutedText}`}
         >
-          <p>
-            <span
-              className={`font-display text-sm ${
-                isPaper ? 'text-[#1F1C18]' : 'text-[#E5E7EB]'
-              }`}
-            >
-              {t.brand}
-            </span>
-            <span aria-hidden="true" className="mx-2 opacity-50">
-              ·
-            </span>
-            <span>{t.subtitle}</span>
-          </p>
+          <div className="text-center sm:text-left">
+            <p className="text-sm">
+              <span className={`font-display text-base font-semibold ${tk.headingText}`}>
+                Archive
+              </span>
+              <span aria-hidden="true" className="mx-2 opacity-50">
+                ·
+              </span>
+              <span className={`font-semibold ${tk.accentText}`}>
+                Made by Al Tahjib Noor Raiyan
+              </span>
+            </p>
+            <p className="mt-1 text-[11px] opacity-80">
+              All-in-One Study &amp; Productivity Platform · Full Backup &amp; Sync Ready
+            </p>
+          </div>
 
-          <button
-            type="button"
-            onClick={handleToggleMusic}
-            className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs transition-colors ${
-              isPaper
-                ? 'border-[#BFB7A8] bg-[#E8E3D8] text-[#211E19]'
-                : 'border-white/10 bg-[#181A1F] text-[#D1D5DB] hover:border-[#D4A359]/50'
-            }`}
-          >
-            {isMusicPlaying ? (
-              <>
-                <Volume2 className="h-3.5 w-3.5 text-[#D4A359]" />
-                <span>
-                  {lang === 'bn' ? 'ফোকাস অডিও চলছে' : 'Ambient Audio Playing'}
-                </span>
-              </>
-            ) : (
-              <>
-                <VolumeX className="h-3.5 w-3.5 opacity-60" />
-                <span>{lang === 'bn' ? 'অডিও বন্ধ' : 'Ambient Audio Off'}</span>
-              </>
-            )}
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportFullBackup}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${tk.inputSurface}`}
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Full Backup</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => footerRestoreRef.current?.click()}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${tk.inputSurface}`}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              <span>Restore Backup</span>
+            </button>
+            <input
+              ref={footerRestoreRef}
+              type="file"
+              accept="application/json"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) await handleRestoreFullFile(file);
+                e.target.value = '';
+              }}
+              className="hidden"
+            />
+
+            <button
+              type="button"
+              onClick={handleToggleMusic}
+              className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs transition-colors ${tk.inputSurface}`}
+            >
+              {isMusicPlaying ? (
+                <>
+                  <Volume2 className={`h-3.5 w-3.5 ${tk.accentText}`} />
+                  <span>
+                    {lang === 'bn' ? 'ব্যাকগ্রাউন্ড মিউজিক চলছে' : 'Audio Playing'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="h-3.5 w-3.5 opacity-60" />
+                  <span>{lang === 'bn' ? 'অডিও বন্ধ' : 'Audio Off'}</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </footer>
     </div>

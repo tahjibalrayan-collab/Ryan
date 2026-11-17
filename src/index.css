@@ -13,8 +13,8 @@
 
   body {
     font-family: var(--font-sans);
-    background-color: #111215;
-    color: #F4F2ED;
+    background-color: #FFFFFF;
+    color: #111111;
   }
 
   h1, h2, .font-display {
@@ -47,19 +47,19 @@
   font-family: var(--font-classic);
 }
 
-/* Realistic dark & walnut wood bookshelf ledges */
+/* Realistic dark, monochrome & walnut wood bookshelf ledges */
 .shelf-ledge {
-  background: linear-gradient(180deg, #3D2B1F 0%, #2A1D15 55%, #1A110C 100%);
+  background: linear-gradient(180deg, #27272A 0%, #18181B 55%, #09090B 100%);
   box-shadow:
-    0 1px 0 rgba(255, 224, 185, 0.14) inset,
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
     0 14px 26px -6px rgba(0, 0, 0, 0.78);
 }
 
 .shelf-ledge-light {
-  background: linear-gradient(180deg, #7A5438 0%, #5B3D28 55%, #3C2719 100%);
+  background: linear-gradient(180deg, #3F3F46 0%, #27272A 55%, #18181B 100%);
   box-shadow:
-    0 1px 0 rgba(255, 236, 209, 0.28) inset,
-    0 12px 22px -6px rgba(45, 29, 17, 0.45);
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 12px 22px -6px rgba(0, 0, 0, 0.35);
 }
 
 /* Vertical spine text for library bookshelf */
@@ -77,35 +77,48 @@
   background: linear-gradient(270deg, rgba(0,0,0,0) 88%, rgba(0,0,0,0.09) 100%);
 }
 
+/* 3D Page Flip Perspective */
+.book-perspective {
+  perspective: 1800px;
+}
+
 /* Paper ruling textures */
 .paper-lined {
   background-image: repeating-linear-gradient(
     transparent,
     transparent 27px,
-    rgba(60, 52, 42, 0.09) 27px,
-    rgba(60, 52, 42, 0.09) 28px
+    rgba(20, 20, 20, 0.09) 27px,
+    rgba(20, 20, 20, 0.09) 28px
   );
   background-position-y: 12px;
 }
 
 .paper-dotted {
-  background-image: radial-gradient(rgba(60, 52, 42, 0.18) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(20, 20, 20, 0.18) 1px, transparent 1px);
   background-size: 20px 20px;
 }
 
 .paper-grid {
   background-image:
-    linear-gradient(to right, rgba(60, 52, 42, 0.07) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(60, 52, 42, 0.07) 1px, transparent 1px);
+    linear-gradient(to right, rgba(20, 20, 20, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(20, 20, 20, 0.07) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 
-/* Subtle graph-paper subtle lines for classic paper mode */
+/* Subtle graph-paper lines for monochrome / paper light themes */
 .paper-archive-bg {
   background-color: #DCD6CA;
   background-image:
     linear-gradient(to right, rgba(90, 80, 68, 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(90, 80, 68, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.mono-light-bg {
+  background-color: #FAFAFA;
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
   background-size: 48px 48px;
 }
 
@@ -118,9 +131,28 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(120, 120, 120, 0.3);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(120, 120, 120, 0.5);
+}
+
+/* Print / Export to PDF styling for Journal */
+@media print {
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only-journal {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
 }

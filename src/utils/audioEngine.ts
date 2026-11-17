@@ -3,7 +3,8 @@ export type AmbientTrackId =
   | 'warm-lofi'
   | 'brown-noise'
   | 'alpha-focus'
-  | 'fireplace';
+  | 'fireplace'
+  | `custom:${string}`;
 
 export interface AmbientTrack {
   id: AmbientTrackId;
@@ -45,43 +46,128 @@ export const AMBIENT_TRACKS: AmbientTrack[] = [
   },
 ];
 
-export function playTimerCompletionBeep(): void {
-  try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
+// Loud, continuous alarm controller (rings for 60s or until manually stopped)
+class TimerAlarmController {
+  private ctx: AudioContext | null = null;
+  private intervalId: number | null = null;
+  private autoStopTimeoutId: number | null = null;
+  private ringing = false;
+  private listeners = new Set<(ringing: boolean) => void>();
 
-    const beeps = [
-      { start: 0, freq: 880, dur: 0.16 },
-      { start: 0.24, freq: 880, dur: 0.16 },
-      { start: 0.48, freq: 1046.5, dur: 0.28 },
-      { start: 0.95, freq: 880, dur: 0.16 },
-      { start: 1.19, freq: 1046.5, dur: 0.36 },
-    ];
-
-    beeps.forEach(({ start, freq, dur }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + start);
-
-      gain.gain.setValueAtTime(0.001, now + start);
-      gain.gain.exponentialRampToValueAtTime(0.24, now + start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + start);
-      osc.stop(now + start + dur + 0.02);
-    });
-
-    setTimeout(() => {
-      ctx.close().catch(() => {});
-    }, 2200);
-  } catch {
-    // Audio playback blocked or unavailable
+  private notify() {
+    this.listeners.forEach((cb) => cb(this.ringing));
   }
+
+  public subscribe(cb: (ringing: boolean) => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  public isRinging(): boolean {
+    return this.ringing;
+  }
+
+  private playPulse() {
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!this.ctx || this.ctx.state === 'closed') {
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+
+      // Compressor for loud, punchy, distortion-free alert
+      const compressor = ctx.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-12, now);
+      compressor.ratio.setValueAtTime(8, now);
+      compressor.connect(ctx.destination);
+
+      const pulses = [
+        { start: 0, freq: 987.77, dur: 0.17 }, // B5
+        { start: 0.22, freq: 1318.51, dur: 0.19 }, // E6
+        { start: 0.46, freq: 987.77, dur: 0.17 }, // B5
+        { start: 0.68, freq: 1318.51, dur: 0.28 }, // E6
+      ];
+
+      pulses.forEach(({ start, freq, dur }) => {
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc1.type = 'triangle';
+        osc2.type = 'square';
+        osc1.frequency.setValueAtTime(freq, now + start);
+        osc2.frequency.setValueAtTime(freq * 0.5, now + start);
+
+        // Louder gain (0.72) compared to faint 0.24 sine beep
+        gain.gain.setValueAtTime(0.001, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.72, now + start + 0.015);
+        gain.gain.setValueAtTime(0.68, now + start + dur - 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(compressor);
+
+        osc1.start(now + start);
+        osc2.start(now + start);
+        osc1.stop(now + start + dur + 0.02);
+        osc2.stop(now + start + dur + 0.02);
+      });
+    } catch {
+      // Audio playback blocked or unavailable
+    }
+  }
+
+  public startContinuous(maxDurationMs = 0): void {
+    this.stop();
+    this.ringing = true;
+    this.notify();
+
+    this.playPulse();
+    this.intervalId = window.setInterval(() => {
+      if (!this.ringing) return;
+      this.playPulse();
+    }, 1250);
+
+    if (maxDurationMs > 0) {
+      this.autoStopTimeoutId = window.setTimeout(() => {
+        this.stop();
+      }, maxDurationMs);
+    }
+  }
+
+  public testLoudBeep(): void {
+    this.playPulse();
+  }
+
+  public stop(): void {
+    if (this.intervalId !== null) {
+      window.clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (this.autoStopTimeoutId !== null) {
+      window.clearTimeout(this.autoStopTimeoutId);
+      this.autoStopTimeoutId = null;
+    }
+    if (this.ringing) {
+      this.ringing = false;
+      this.notify();
+    }
+  }
+}
+
+export const timerAlarm = new TimerAlarmController();
+
+export function playTimerCompletionBeep(): void {
+  timerAlarm.testLoudBeep();
 }
 
 class AmbientSoundEngine {
@@ -89,13 +175,17 @@ class AmbientSoundEngine {
   private masterGain: GainNode | null = null;
   private activeNodes: AudioNode[] = [];
   private activeTimers: number[] = [];
+  private audioEl: HTMLAudioElement | null = null;
+  private currentCustomUrl: string | null = null;
   private currentTrack: AmbientTrackId = 'rain-library';
   private playing = false;
   private volume = 0.45;
 
   private ensureContext(): AudioContext {
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioCtx();
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = this.volume;
@@ -123,7 +213,23 @@ class AmbientSoundEngine {
     this.activeNodes = [];
   }
 
-  private createNoiseBuffer(ctx: AudioContext, seconds = 4, type: 'pink' | 'brown' = 'pink'): AudioBuffer {
+  private stopAudioElement() {
+    if (this.audioEl) {
+      this.audioEl.pause();
+      this.audioEl.removeAttribute('src');
+      this.audioEl.load();
+    }
+    if (this.currentCustomUrl) {
+      URL.revokeObjectURL(this.currentCustomUrl);
+      this.currentCustomUrl = null;
+    }
+  }
+
+  private createNoiseBuffer(
+    ctx: AudioContext,
+    seconds = 4,
+    type: 'pink' | 'brown' = 'pink'
+  ): AudioBuffer {
     const bufferSize = ctx.sampleRate * seconds;
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -137,7 +243,13 @@ class AmbientSoundEngine {
         data[i] *= 3.2;
       }
     } else {
-      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      let b0 = 0,
+        b1 = 0,
+        b2 = 0,
+        b3 = 0,
+        b4 = 0,
+        b5 = 0,
+        b6 = 0;
       for (let i = 0; i < bufferSize; i++) {
         const white = Math.random() * 2 - 1;
         b0 = 0.99886 * b0 + white * 0.0555179;
@@ -156,6 +268,10 @@ class AmbientSoundEngine {
 
   private buildTrack(track: AmbientTrackId) {
     this.clearNodes();
+    this.stopAudioElement();
+
+    if (track.startsWith('custom:')) return;
+
     const ctx = this.ensureContext();
     if (!this.masterGain) return;
 
@@ -200,14 +316,13 @@ class AmbientSoundEngine {
       this.activeNodes.push(noise, lp, gain);
     } else if (track === 'warm-lofi') {
       const chords = [
-        [174.61, 220.0, 261.63, 329.63], // Fmaj7
-        [164.81, 196.0, 246.94, 293.66], // Em7
-        [146.83, 174.61, 220.0, 261.63], // Dm7
-        [130.81, 164.81, 196.0, 246.94], // Cmaj7
+        [174.61, 220.0, 261.63, 329.63],
+        [164.81, 196.0, 246.94, 293.66],
+        [146.83, 174.61, 220.0, 261.63],
+        [130.81, 164.81, 196.0, 246.94],
       ];
       let chordIndex = 0;
 
-      // Subtle rain underlay
       const noise = ctx.createBufferSource();
       noise.buffer = this.createNoiseBuffer(ctx, 4, 'pink');
       noise.loop = true;
@@ -260,7 +375,7 @@ class AmbientSoundEngine {
       leftOsc.type = 'sine';
       rightOsc.type = 'sine';
       leftOsc.frequency.value = 216;
-      rightOsc.frequency.value = 226; // 10 Hz gentle alpha beat
+      rightOsc.frequency.value = 226;
       gain.gain.value = 0.11;
 
       leftOsc.connect(gain);
@@ -310,20 +425,52 @@ class AmbientSoundEngine {
     }
   }
 
+  private setMediaSession(title: string) {
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title,
+          artist: 'Archive Focus Audio',
+          album: 'Made by Al Tahjib Noor Raiyan',
+        });
+      } catch {
+        // Ignore unsupported mediaSession environments
+      }
+    }
+  }
+
   public start(track?: AmbientTrackId) {
     if (track) this.currentTrack = track;
     this.playing = true;
     this.buildTrack(this.currentTrack);
+    const meta = AMBIENT_TRACKS.find((t) => t.id === this.currentTrack);
+    if (meta) this.setMediaSession(meta.title);
+  }
+
+  public startCustomObjectUrl(trackId: AmbientTrackId, objectUrl: string, title: string) {
+    this.clearNodes();
+    this.stopAudioElement();
+    this.currentTrack = trackId;
+    this.currentCustomUrl = objectUrl;
+    this.playing = true;
+
+    const audio = new Audio(objectUrl);
+    audio.loop = true;
+    audio.volume = this.volume;
+    this.audioEl = audio;
+    audio.play().catch(() => {});
+    this.setMediaSession(title);
   }
 
   public stop() {
     this.playing = false;
     this.clearNodes();
+    this.stopAudioElement();
   }
 
   public setTrack(track: AmbientTrackId) {
     this.currentTrack = track;
-    if (this.playing) {
+    if (this.playing && !track.startsWith('custom:')) {
       this.buildTrack(track);
     }
   }
@@ -332,6 +479,9 @@ class AmbientSoundEngine {
     this.volume = Math.max(0, Math.min(1, vol));
     if (this.masterGain && this.ctx) {
       this.masterGain.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.05);
+    }
+    if (this.audioEl) {
+      this.audioEl.volume = this.volume;
     }
   }
 
